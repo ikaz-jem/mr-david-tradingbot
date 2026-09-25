@@ -1,0 +1,7 @@
+import { CreditCard } from "lucide-react";
+import { connectDB } from "@/lib/db";
+import { Order } from "@/models/Order";
+import { EmptyState, PageIntro, SectionHeader } from "@/components/dashboard-ui";
+export const dynamic = "force-dynamic";
+export default async function AdminOrdersPage() { await connectDB(); const [total, unknown, filled] = await Promise.all([Order.countDocuments(), Order.countDocuments({ status: "unknown" }), Order.countDocuments({ status: "filled" })]); return <><PageIntro eyebrow="Operations / exchange" title="Orders" description="Track intent, submission, unknown status, partial fills, and confirmed exchange results."/><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Total orders" value={total}/><Metric label="Needs reconciliation" value={unknown}/><Metric label="Filled" value={filled}/></div><section className="surface rounded-[20px] p-5 sm:p-6"><SectionHeader title="Order activity" detail="Exchange-confirmed events only"/><EmptyState icon={CreditCard} title="No exchange orders yet" text="The user-approved Binance Spot order flow is the next integration milestone. Orders will never be inferred from AI signals alone."/></section></>; }
+function Metric({ label, value }: { label: string; value: number }) { return <div className="surface rounded-[18px] p-5"><div className="text-xs font-semibold text-muted">{label}</div><div className="mt-5 text-3xl font-semibold number">{value}</div></div>; }

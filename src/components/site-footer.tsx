@@ -1,0 +1,10 @@
+import Link from "next/link";
+import { Brand } from "@/components/brand";
+import { CookieSettingsButton } from "@/components/cookie-consent";
+
+export function SiteFooter() {
+  return <footer className="border-t border-line bg-[#0a100d]"><div className="mx-auto max-w-[1440px] px-5 py-12 sm:px-8 lg:px-12">
+    <div className="flex flex-col justify-between gap-10 md:flex-row"><div className="max-w-xs"><Brand/><p className="mt-5 text-sm leading-6 text-muted">A clearer way to research crypto markets, question every setup, and keep control of the decision. An Enrivea product.</p></div><div className="grid grid-cols-2 gap-x-16 gap-y-8 text-sm sm:grid-cols-3"><div className="flex flex-col gap-3"><strong className="text-white">Product</strong><Link className="muted hover:text-white" href="/#product">Platform</Link><Link className="muted hover:text-white" href="/#method">Method</Link><Link className="muted hover:text-white" href="/#safeguards">Safeguards</Link><Link className="muted hover:text-white" href="/pricing">Pricing</Link></div><div className="flex flex-col gap-3"><strong className="text-white">Company</strong><Link className="muted hover:text-white" href="/about">About</Link><Link className="muted hover:text-white" href="/contact">Contact</Link><a className="muted hover:text-white" href="https://enrivea.com" target="_blank" rel="noreferrer">Enrivea ↗</a></div><div className="flex flex-col gap-3"><strong className="text-white">Legal</strong><Link className="muted hover:text-white" href="/terms">Terms</Link><Link className="muted hover:text-white" href="/privacy">Privacy</Link><Link className="muted hover:text-white" href="/cookies">Cookies</Link><Link className="muted hover:text-white" href="/risk-disclosure">Risk disclosure</Link></div></div></div>
+    <div className="mt-12 flex flex-col justify-between gap-3 border-t border-line pt-6 text-xs text-[#88978b] sm:flex-row"><span>© {new Date().getFullYear()} Enrivea. All rights reserved.</span><span className="flex flex-wrap gap-4"><CookieSettingsButton/>Crypto trading involves risk. No return is guaranteed.</span></div>
+  </div></footer>;
+}

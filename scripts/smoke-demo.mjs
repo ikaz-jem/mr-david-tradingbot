@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import mongoose from "mongoose";
+import { chromium } from "playwright";
+
+const browser = await chromium.launch({ headless: true, executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" });
+const page = await browser.newPage();
+try {
+  await page.goto("http://localhost:3000/login");
+  const consent = page.getByRole("button", { name: "Essential only" });
+  if (await consent.isVisible()) await consent.click();
+  await page.getByRole("button", { name: "Demo user" }).click();
+  await page.waitForURL("**/dashboard", { timeout: 15000 });
+  assert.match(await page.locator("body").innerText(), /Local demo account/);
+  const denied = await page.goto("http://localhost:3000/admin");
+  assert.equal(denied?.status(), 404);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL("http://localhost:3000/");
+  await page.goto("http://localhost:3000/login");
+  await page.getByRole("button", { name: "Demo admin" }).click();
+  await page.waitForURL("**/admin", { timeout: 15000 });
+  assert.match(await page.locator("body").innerText(), /Control room/);
+  await page.screenshot({ path: "artifacts/demo-admin.png", fullPage: true });
+  await page.goto("http://localhost:3000/admin/activity");
+  assert.match(await page.locator("body").innerText(), /Platform activity/);
+  await page.goto("http://localhost:3000/admin/data?category=users");
+  assert.match(await page.locator("body").innerText(), /Data explorer/);
+  await page.goto("http://localhost:3000/admin/billing");
+  assert.match(await page.locator("body").innerText(), /Billing tests/);
+  await page.goto("http://localhost:3000/admin/emails");
+  assert.match(await page.locator("body").innerText(), /Email delivery/);
+  await page.goto("http://localhost:3000/admin/users?q=demo-user%40enrivea.invalid");
+  assert.match(await page.locator("body").innerText(), /demo-user@enrivea.invalid/);
+  await mongoose.connect(process.env.MONGODB_URI);
+  const users = mongoose.connection.db.collection("users");
+  const demoUser = await users.findOne({ email: "demo-user@enrivea.invalid", isDemo: true });
+  const demoAdmin = await users.findOne({ email: "demo-admin@enrivea.invalid", isDemo: true });
+  assert.ok(demoUser && demoAdmin);
+  const selfChange = await page.request.post(`http://localhost:3000/api/admin/users/${demoAdmin._id}/access`, { headers: { Origin: "http://localhost:3000" }, data: { action: "set_role", value: "user", reason: "Self change denial test" } });
+  assert.equal(selfChange.status(), 403);
+  const change = await page.request.post(`http://localhost:3000/api/admin/users/${demoUser._id}/access`, { headers: { Origin: "http://localhost:3000" }, data: { action: "set_role", value: "staff", reason: "Demo workflow validation" } });
+  assert.equal(change.status(), 200);
+  const changed = await users.findOne({ _id: demoUser._id });
+  assert.equal(changed.role, "staff");
+  const audit = await mongoose.connection.db.collection("adminauditevents").findOne({ actorId: demoAdmin._id, targetUserId: demoUser._id, action: "set_role", after: "staff", status: "applied" });
+  assert.ok(audit);
+  const restore = await page.request.post(`http://localhost:3000/api/admin/users/${demoUser._id}/access`, { headers: { Origin: "http://localhost:3000" }, data: { action: "set_role", value: "user", reason: "Restore demo user access" } });
+  assert.equal(restore.status(), 200);
+  console.log("PASS: local demo user/admin login, role isolation, admin views, audited access changes");
+} finally {
+  await browser.close();
+  if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
+}

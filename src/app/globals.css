@@ -1,0 +1,54 @@
+@import "tailwindcss";
+@import "@fontsource/urbanist/400.css";
+@import "@fontsource/urbanist/500.css";
+@import "@fontsource/urbanist/600.css";
+@import "@fontsource/urbanist/700.css";
+@import "@fontsource/urbanist/800.css";
+
+@theme inline {
+  --color-background: #090d0c;
+  --color-foreground: #f5f8f1;
+  --color-muted: #8e9a91;
+  --color-panel: #111816;
+  --color-line: #26312b;
+  --color-accent: #c5ff41;
+  --color-primary: #c5ff41;
+  --color-primary-foreground: #0d1409;
+  --color-card: #111816;
+  --color-card-foreground: #f5f8f1;
+  --color-border: #26312b;
+  --color-input: #354139;
+  --color-ring: #a3d757;
+  --color-secondary: #1a251d;
+  --color-secondary-foreground: #f5f8f1;
+  --color-muted-foreground: #a8b4ab;
+  --color-destructive: #fb6b73;
+  --font-sans: "Urbanist", "Segoe UI", Arial, sans-serif;
+}
+
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #090d0c; color: #f5f8f1; font-family: var(--font-sans); }
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+::selection { background: #c5ff41; color: #09100b; }
+
+.surface { background: #111816; border: 1px solid #26312b; }
+.surface-soft { background: #0d1311; border: 1px solid #26312b; }
+.eyebrow { color: #c5ff41; letter-spacing: .17em; font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.display { letter-spacing: -.065em; line-height: .97; font-weight: 600; }
+.gradient-title { background: linear-gradient(135deg,#f9fff2 25%,#a8b8a5 80%); color: transparent; background-clip: text; }
+.hairline { border-color: #26312b; }
+.grid-glow { background-image: linear-gradient(#26312b4b 1px,transparent 1px),linear-gradient(90deg,#26312b4b 1px,transparent 1px); background-size: 42px 42px; mask-image: linear-gradient(to bottom,black,transparent 90%); }
+.hero-mesh { background-image: radial-gradient(circle at 70% 42%,#89c93412,transparent 35%),linear-gradient(#33483525 1px,transparent 1px),linear-gradient(90deg,#33483525 1px,transparent 1px); background-size: auto,64px 64px,64px 64px; mask-image: linear-gradient(to bottom,black 12%,#0008 78%,transparent); }
+.accent-glow { box-shadow: 0 0 0 1px #c5ff4130, 0 18px 80px #9bff1f16; }
+.button-primary { background: #c5ff41; color: #0d1409; font-weight: 800; transition: transform .2s,background .2s,box-shadow .2s; }
+.button-primary:hover { background: #d9ff84; transform: translateY(-2px); box-shadow: 0 10px 34px #c5ff4128; }
+.button-secondary { border: 1px solid #3a493f; background: #17201a; color: #f5f8f1; transition: border-color .2s,background .2s; }
+.button-secondary:hover { border-color: #c5ff41; background: #1e2b20; }
+.number { font-variant-numeric: tabular-nums; }
+.muted { color: #a8b4ab; }
+.app-scrollbar::-webkit-scrollbar { width: 7px; height: 7px; }
+.app-scrollbar::-webkit-scrollbar-thumb { background: #314035; border-radius: 10px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

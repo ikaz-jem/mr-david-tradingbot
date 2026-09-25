@@ -1,0 +1,10 @@
+import type { Metadata } from "next";
+import { LegalDocument } from "@/components/legal-document";
+export const metadata: Metadata = { title: "Terms of service" };
+export default function Page() { return <LegalDocument title="Terms of service" intro="These draft terms outline how Enrivea Signal is intended to work. Final terms will name the operating entity, governing law, eligible locations, and effective date." sections={[
+  { title: "The service", paragraphs: ["The platform provides market research tools, AI-assisted analysis, account features, and, where enabled, a way to submit a user-approved order to a connected exchange. Features may change during the pilot.", "The service does not hold customer crypto assets. Trading occurs in your own exchange account, subject to that exchange's rules."] },
+  { title: "Your account and exchange connection", paragraphs: ["You are responsible for accurate registration details, account security, and the permissions granted to any exchange API key. Never enable withdrawals or transfers on a key used with this product.", "We may restrict features in locations where we have not cleared access or where an exchange does not support the workflow."] },
+  { title: "Credits and payments", paragraphs: ["A credit is consumed for a completed analysis under the plan's stated terms. A failed analysis should not consume a credit. Final billing, expiry, refund, and cancellation terms require payment-provider and legal review before sales begin."] },
+  { title: "Trading risk and responsibility", paragraphs: ["Crypto assets are volatile and losses may exceed expectations. A published setup or model score does not guarantee a result. You choose whether to approve an order, and exchange fees, execution price, outages, and market movements affect outcomes."] },
+  { title: "Changes and support", paragraphs: ["We may change or suspend features for security, exchange compatibility, or legal reasons. Final notice, dispute, and limitation terms will be published before launch."] },
+]} />; }
