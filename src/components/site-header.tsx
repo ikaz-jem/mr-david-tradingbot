@@ -3,7 +3,7 @@ import { ArrowUpRight, Menu } from "lucide-react";
 import { Brand } from "@/components/brand";
 
 export function SiteHeader() {
-  return <header className="relative z-20 border-b border-[#26312b] bg-[#090d0ce8] backdrop-blur-xl">
+  return <header className="site-header relative z-20 border-b border-[#26312b] bg-[#090d0ce8] backdrop-blur-xl">
     <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-12">
       <Brand />
       <nav aria-label="Main navigation" className="hidden items-center gap-9 text-[.87rem] font-semibold text-[#a9b5aa] md:flex">
