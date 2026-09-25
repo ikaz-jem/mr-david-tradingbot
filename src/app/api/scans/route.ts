@@ -19,7 +19,6 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Sign in to run a scan." }, { status: 401 });
   const parsed = scanInput.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Select a supported Spot pair and try again." }, { status: 400 });
-  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) return NextResponse.json({ error: "AI scanning is not configured yet." }, { status: 503 });
 
   let runId: mongoose.Types.ObjectId | undefined;
   let charged = false;
@@ -30,6 +29,7 @@ export async function POST(request: Request) {
   try {
     await connectDB();
     if (!(await getPlatformConfig()).scansOpen) return NextResponse.json({ error: "Research scans are temporarily paused by operations. No credit was charged." }, { status: 503 });
+    if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) return NextResponse.json({ error: "AI scanning is not configured yet." }, { status: 503 });
     const user = await User.findOne({ _id: userId, status: "active" }).select("creditBalance");
     if (!user) return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
     if (user.creditBalance < 1) return NextResponse.json({ error: "You need one credit to run this scan." }, { status: 402 });

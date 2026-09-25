@@ -10,9 +10,8 @@ export function AdminPlatformControls({ config }: { config: Config }) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [announcement, setAnnouncement] = useState(config.announcement);
+  const [reason, setReason] = useState("");
   async function change(field: keyof Config, value: boolean | string) {
-    const reason = window.prompt(`Why are you changing ${field}? This reason will be retained in the audit log.`);
-    if (reason === null) return;
     if (reason.trim().length < 8) { setMessage("Enter an audit reason of at least 8 characters."); return; }
     setPending(true); setMessage("");
     try {
@@ -20,11 +19,13 @@ export function AdminPlatformControls({ config }: { config: Config }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Change failed.");
       setMessage("Control updated and recorded in the audit trail.");
+      setReason("");
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Change failed."); }
     finally { setPending(false); }
   }
   return <div className="space-y-4">
+    <label className="block rounded-xl border border-[#597547] bg-[#c5ff410a] p-4 text-sm font-bold">Reason for change <span className="font-normal text-muted">· required for every action</span><input value={reason} onChange={event => setReason(event.target.value)} maxLength={300} placeholder="e.g. Investigating exchange data outage" className="mt-3 w-full rounded-lg border border-line bg-[#0e1510] px-3 py-2 text-sm font-normal text-white"/></label>
     <Control title="New registrations" detail="Pause creation of new user accounts without affecting existing sessions." active={config.registrationOpen} pending={pending} onClick={() => change("registrationOpen", !config.registrationOpen)}/>
     <Control title="AI research scans" detail="Stop new scan requests before any credit is charged. Existing records remain visible." active={config.scansOpen} pending={pending} onClick={() => change("scansOpen", !config.scansOpen)}/>
     <div className="rounded-xl border border-line bg-[#141e17] p-4"><label htmlFor="platform-announcement" className="text-sm font-bold">Workspace announcement</label><p className="mt-1 text-xs text-muted">Shown to signed-in users. Keep it factual and under 180 characters.</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><input id="platform-announcement" maxLength={180} value={announcement} onChange={event => setAnnouncement(event.target.value)} placeholder="No announcement" className="min-w-0 flex-1 rounded-lg border border-line bg-[#0e1510] px-3 py-2 text-sm text-white"/><button disabled={pending || announcement === config.announcement} onClick={() => change("announcement", announcement)} className="button-secondary rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-40">Save message</button></div></div>

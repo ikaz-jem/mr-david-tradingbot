@@ -33,13 +33,13 @@ export default async function AdminActivityPage() {
     PaystackCheckout.find().sort({ updatedAt: -1 }).limit(12).select("planId status userId updatedAt").lean(),
     PaystackWebhookEvent.find().sort({ createdAt: -1 }).limit(12).select("type outcome reference createdAt").lean(),
     EmailDelivery.find().sort({ updatedAt: -1 }).limit(12).select("category status recipient updatedAt").lean(),
-    AdminAuditEvent.find().sort({ createdAt: -1 }).limit(20).select("action before after reason status actorId targetUserId createdAt").lean(),
+    AdminAuditEvent.find().sort({ createdAt: -1 }).limit(20).select("action before after reason status actorId targetUserId targetType targetId createdAt").lean(),
     ScanRun.countDocuments({ status: "running" }),
     Order.countDocuments({ status: "unknown" }),
     PaystackWebhookEvent.countDocuments({ outcome: "review" }),
     EmailDelivery.countDocuments({ status: { $in: ["failed", "bounced", "complained"] } }),
   ]);
-  const ids = [...new Set([...scans.map(item => String(item.userId)), ...signals.map(item => String(item.userId)), ...outcomes.map(item => String(item.userId)), ...orders.map(item => String(item.userId)), ...credits.map(item => String(item.userId)), ...checkouts.map(item => String(item.userId)), ...audits.flatMap(item => [String(item.actorId), String(item.targetUserId)])])];
+  const ids = [...new Set([...scans.map(item => String(item.userId)), ...signals.map(item => String(item.userId)), ...outcomes.map(item => String(item.userId)), ...orders.map(item => String(item.userId)), ...credits.map(item => String(item.userId)), ...checkouts.map(item => String(item.userId)), ...audits.flatMap(item => [String(item.actorId), ...(item.targetUserId ? [String(item.targetUserId)] : [])])])];
   const owners = await User.find({ _id: { $in: ids } }).select("email").lean();
   const emailById = new Map(owners.map(owner => [String(owner._id), owner.email]));
   const owner = (id: unknown) => emailById.get(String(id)) ?? "Unknown account";
@@ -53,7 +53,7 @@ export default async function AdminActivityPage() {
     ...checkouts.map(item => ({ id: `checkout:${item._id}`, kind: "Paystack test", title: `${item.planId} · ${item.status}`, detail: owner(item.userId), at: item.updatedAt, severity: item.status === "review" ? "attention" as const : "normal" as const })),
     ...webhooks.map(item => ({ id: `webhook:${item._id}`, kind: "Payment event", title: `${item.type} · ${item.outcome}`, detail: item.reference || "No reference", at: item.createdAt, severity: item.outcome === "review" ? "attention" as const : "normal" as const })),
     ...emails.map(item => ({ id: `email:${item._id}`, kind: "Email", title: `${item.category} · ${item.status}`, detail: item.recipient, at: item.updatedAt, severity: ["failed", "bounced", "complained"].includes(item.status) ? "attention" as const : "normal" as const })),
-    ...audits.map(item => ({ id: `audit:${item._id}`, kind: "Admin change", title: `${item.action.replaceAll("_", " ")} · ${item.status}`, detail: `${owner(item.actorId)} changed ${owner(item.targetUserId)}: ${item.before} → ${item.after}. ${item.reason}`, at: item.createdAt, severity: item.status !== "applied" ? "attention" as const : "normal" as const })),
+    ...audits.map(item => ({ id: `audit:${item._id}`, kind: "Admin change", title: `${item.action.replaceAll("_", " ")} · ${item.status}`, detail: `${owner(item.actorId)} changed ${item.targetType === "platform" ? "platform" : item.targetType === "signal" ? `signal ${item.targetId}` : owner(item.targetUserId)}: ${item.before} → ${item.after}. ${item.reason}`, at: item.createdAt, severity: item.status !== "applied" ? "attention" as const : "normal" as const })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 80);
   return <>
     <PageIntro eyebrow="Operations / activity" title="Platform activity" description="Recent events from accounts, research, paper outcomes, exchange orders, billing tests, email, and admin actions. This is database activity, not a real-time stream."/>

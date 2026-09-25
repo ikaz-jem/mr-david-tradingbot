@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { chromium } from "playwright";
 
 const browser = await chromium.launch({ headless: true, executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" });
 const page = await browser.newPage();
+let temporarySignalId;
+let initialControls;
 try {
   await page.goto("http://localhost:3000/login");
   const consent = page.getByRole("button", { name: "Essential only" });
@@ -13,6 +16,8 @@ try {
   assert.match(await page.locator("body").innerText(), /Local demo account/);
   const denied = await page.goto("http://localhost:3000/admin");
   assert.equal(denied?.status(), 404);
+  const userControl = await page.request.post("http://localhost:3000/api/admin/controls", { headers: { Origin: "http://localhost:3000" }, data: { field: "scansOpen", value: false, reason: "User control denial test" } });
+  assert.equal(userControl.status(), 403);
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("http://localhost:3000/");
   await page.goto("http://localhost:3000/login");
@@ -22,6 +27,9 @@ try {
   await page.screenshot({ path: "artifacts/demo-admin.png", fullPage: true });
   await page.goto("http://localhost:3000/admin/activity");
   assert.match(await page.locator("body").innerText(), /Platform activity/);
+  await page.goto("http://localhost:3000/admin/controls");
+  assert.match(await page.locator("body").innerText(), /Platform controls/);
+  await page.screenshot({ path: "artifacts/demo-admin-controls.png", fullPage: true });
   await page.goto("http://localhost:3000/admin/data?category=users");
   assert.match(await page.locator("body").innerText(), /Data explorer/);
   await page.goto("http://localhost:3000/admin/billing");
@@ -31,6 +39,7 @@ try {
   await page.goto("http://localhost:3000/admin/users?q=demo-user%40enrivea.invalid");
   assert.match(await page.locator("body").innerText(), /demo-user@enrivea.invalid/);
   await mongoose.connect(process.env.MONGODB_URI);
+  initialControls = await mongoose.connection.db.collection("platformconfigs").findOne({ key: "global" });
   const users = mongoose.connection.db.collection("users");
   const demoUser = await users.findOne({ email: "demo-user@enrivea.invalid", isDemo: true });
   const demoAdmin = await users.findOne({ email: "demo-admin@enrivea.invalid", isDemo: true });
@@ -45,8 +54,31 @@ try {
   assert.ok(audit);
   const restore = await page.request.post(`http://localhost:3000/api/admin/users/${demoUser._id}/access`, { headers: { Origin: "http://localhost:3000" }, data: { action: "set_role", value: "user", reason: "Restore demo user access" } });
   assert.equal(restore.status(), 200);
-  console.log("PASS: local demo user/admin login, role isolation, admin views, audited access changes");
+  const control = (field, value, reason) => page.request.post("http://localhost:3000/api/admin/controls", { headers: { Origin: "http://localhost:3000" }, data: { field, value, reason } });
+  assert.equal((await control("registrationOpen", false, "Pause registration smoke check")).status(), 200);
+  const blockedRegistration = await page.request.post("http://localhost:3000/api/auth/register", { headers: { Origin: "http://localhost:3000" }, data: { name: "Blocked Smoke", email: `blocked-${randomUUID()}@example.invalid`, password: "Testing-only-password-123!" } });
+  assert.equal(blockedRegistration.status(), 503);
+  assert.equal((await control("registrationOpen", true, "Restore registration after smoke check")).status(), 200);
+  assert.equal((await control("scansOpen", false, "Pause research scan smoke check")).status(), 200);
+  const blockedScan = await page.request.post("http://localhost:3000/api/scans", { headers: { Origin: "http://localhost:3000" }, data: { symbol: "BTCUSDT", requestId: randomUUID() } });
+  assert.equal(blockedScan.status(), 503);
+  assert.match((await blockedScan.json()).error, /paused/);
+  assert.equal((await control("scansOpen", true, "Restore research after smoke check")).status(), 200);
+  const signals = mongoose.connection.db.collection("signals");
+  temporarySignalId = (await signals.insertOne({ userId: demoUser._id, symbol: "BTCUSDT", interval: "4h", side: "buy", status: "watch", entry: 100, stop: 90, target: 120, thesis: "Temporary moderation smoke record", riskNote: "Not a real trade", modelVersion: "smoke-test", marketFacts: {}, dataCutoff: new Date(), expiresAt: new Date(Date.now() + 3600000), analysisCost: 0, createdAt: new Date(), updatedAt: new Date() })).insertedId;
+  const moderated = await page.request.post(`http://localhost:3000/api/admin/signals/${temporarySignalId}/moderate`, { headers: { Origin: "http://localhost:3000" }, data: { reason: "Temporary moderation smoke test" } });
+  assert.equal(moderated.status(), 200);
+  assert.equal((await signals.findOne({ _id: temporarySignalId })).status, "invalidated");
+  const signalAudit = await mongoose.connection.db.collection("adminauditevents").findOne({ targetId: String(temporarySignalId), action: "invalidate_signal", status: "applied" });
+  assert.ok(signalAudit);
+  console.log("PASS: demo login, role isolation, admin views, audited access, platform gates, signal moderation");
 } finally {
+  if (mongoose.connection.readyState) {
+    if (temporarySignalId) await mongoose.connection.db.collection("signals").deleteOne({ _id: temporarySignalId });
+    if (temporarySignalId) await mongoose.connection.db.collection("adminauditevents").deleteMany({ targetId: String(temporarySignalId), action: "invalidate_signal" });
+    if (initialControls) await mongoose.connection.db.collection("platformconfigs").updateOne({ key: "global" }, { $set: { registrationOpen: initialControls.registrationOpen ?? true, scansOpen: initialControls.scansOpen ?? true, announcement: initialControls.announcement ?? "" } });
+    else await mongoose.connection.db.collection("platformconfigs").deleteOne({ key: "global" });
+  }
   await browser.close();
   if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
 }

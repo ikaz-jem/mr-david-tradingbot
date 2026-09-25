@@ -27,6 +27,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const signal = await Signal.findById(id).select("userId status").lean();
     if (!signal) return NextResponse.json({ error: "Signal not found." }, { status: 404 });
     if (signal.status === "invalidated") return NextResponse.json({ ok: true, unchanged: true });
+    if (!['watch', 'triggered'].includes(signal.status)) return NextResponse.json({ error: "Only active signals can be invalidated. Historical outcomes stay unchanged." }, { status: 409 });
     const owner = await User.findById(signal.userId).select("isDemo").lean();
     if (actor.isDemo && !owner?.isDemo) return NextResponse.json({ error: "Demo admins can moderate only demo signals." }, { status: 403 });
     const audit = await AdminAuditEvent.create({ actorId: actor._id, targetUserId: signal.userId, targetType: "signal", targetId: id, action: "invalidate_signal", before: signal.status, after: "invalidated", reason: parsed.data.reason });

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +16,7 @@ export function LoginForm({ demoEnabled = false }: { demoEnabled?: boolean }) {
     event.preventDefault(); setError(""); setPending(true);
     const form = new FormData(event.currentTarget);
     try {
+      const { signIn } = await import("next-auth/react");
       const result = await signIn("credentials", { email: String(form.get("email")), password: String(form.get("password")), redirect: false });
       if (!result?.ok) { setError("That email and password did not match."); return; }
       router.push("/dashboard"); router.refresh();
@@ -25,6 +25,7 @@ export function LoginForm({ demoEnabled = false }: { demoEnabled?: boolean }) {
   async function startDemo(role: "user" | "admin") {
     setError(""); setPending(true);
     try {
+      const { signIn } = await import("next-auth/react");
       const result = await signIn("credentials", { demoRole: role, redirect: false });
       if (!result?.ok) { setError("Demo sign-in is unavailable."); return; }
       router.push(role === "admin" ? "/admin" : "/dashboard"); router.refresh();
@@ -46,6 +47,7 @@ export function RegisterForm() {
       const payload = await response.json();
       if (!response.ok) { setError(payload.error ?? "We couldn't create your account."); return; }
       if (payload.verificationRequired) { router.push(`/verify-email?email=${encodeURIComponent(data.email)}`); return; }
+      const { signIn } = await import("next-auth/react");
       const signedIn = await signIn("credentials", { email: data.email, password: data.password, redirect: false });
       if (!signedIn?.ok) { router.push("/login"); return; }
       router.push("/dashboard"); router.refresh();

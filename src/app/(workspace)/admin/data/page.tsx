@@ -79,7 +79,7 @@ async function loadTable(category: Category, skip: number): Promise<Table> {
     }
     case "admin-audit": {
       const [total, records] = await Promise.all([AdminAuditEvent.countDocuments(), AdminAuditEvent.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
-      return { title: "Admin audit", total, columns: ["Actor ID", "Target ID", "Action", "Before", "After", "Status", "Reason", "Created"], rows: records.map(row => [id(row.actorId), id(row.targetUserId), row.action, row.before, row.after, row.status, row.reason, date(row.createdAt)]) };
+      return { title: "Admin audit", total, columns: ["Actor ID", "Target type", "Target ID", "Action", "Before", "After", "Status", "Reason", "Created"], rows: records.map(row => [id(row.actorId), row.targetType || "user", row.targetId || (row.targetUserId ? id(row.targetUserId) : "—"), row.action, row.before, row.after, row.status, row.reason, date(row.createdAt)]) };
     }
   }
 }

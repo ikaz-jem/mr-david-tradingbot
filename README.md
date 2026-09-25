@@ -15,7 +15,7 @@ An Enrivea-owned crypto research SaaS in active development. The current build i
 | Signal outcomes and performance | Forward-only paper outcome engine and scorecard; actual exchange P&L pending |
 | Binance account connection and one-click execution | Models and pages in place; API-key security and order service pending |
 | Paid packages | Three proposed monthly plans displayed; Paystack test-only checkout adapter and signed webhook receipt implemented, but no credits are granted and live checkout is disabled |
-| Admin dashboard | Role-guarded control room, account access changes with audit trail, recent event timeline, billing-test and email-delivery views; production observability still pending |
+| Admin dashboard | Role-guarded control room, audited account access, registration/scan switches, workspace announcement, signal invalidation, event timeline, billing-test and email-delivery views; production observability still pending |
 | Local demo sign-in | One-click user/admin preview behind `NODE_ENV=development` and `DEMO_LOGIN_ENABLED=true`; demo sessions are rejected in production |
 
 The interface intentionally shows empty states for unimplemented trading, billing, and analytics features. It does not display invented returns or pretend a proposed price is an active subscription.
@@ -28,6 +28,10 @@ The interface intentionally shows empty states for unimplemented trading, billin
 4. For local MongoDB, run `docker compose up -d`.
 5. Run `npm run dev` and open `http://localhost:3000`.
 6. Register an account. In local development only, accounts are automatically marked verified if Resend is not configured. To grant the initial admin role, run `npm run make-admin -- your@email.example` and sign out and back in.
+
+### Vercel authentication URLs
+
+Set `NEXTAUTH_URL` and `APP_URL` in Vercel's environment settings to the exact public HTTPS origin (for example, `https://signal.example.com`), with no trailing path. Do not create either variable with an empty value. Also set a strong `NEXTAUTH_SECRET` and a reachable production `MONGODB_URI`. Apply the settings to the correct Vercel environment and redeploy. The login and registration forms defer loading the NextAuth browser helper until interaction, so a blank build-time URL no longer crashes static prerendering; that does **not** replace the need for correct runtime URLs. Production registration also requires the Resend sender configuration described below.
 
 ## Resend setup
 
@@ -45,7 +49,7 @@ Never commit `.env.local`, exchange API credentials, or encryption keys. Do not 
 
 Set `DEMO_LOGIN_ENABLED=true` in `.env.local` and run `npm run dev`. The dev script binds only to `127.0.0.1`; open `/login` and use **Demo user** or **Demo admin**. These buttons provision dedicated `@enrivea.invalid` local accounts with random unusable passwords. They appear only in development, and demo sessions are invalid outside development. The admin demo may change only demo accounts; it cannot modify real local users. The demo banner identifies the preview, and no example trade returns or payments are fabricated. Set the flag to `false` or remove it to disable this access. Do not deploy a development server publicly.
 
-The admin area now includes a searchable account list with audited status/user/staff-role changes, a 20-second-refresh activity timeline, a paginated read-only data explorer, and dedicated billing-test and email-delivery views. The control room reports real database counts and outstanding operational conditions. Admin account changes, secrets, payment settlement, historical trade records, and financial adjustments are intentionally not editable through a generic web form. Those need separate privileged, audited workflows; this is not a universal database editor.
+The admin area includes a searchable account list with audited status/user/staff-role changes, registration and scan pause/resume controls, a workspace announcement, and a signal-invalidation workflow with an owner-visible reason. It also has a 20-second-refresh activity timeline, paginated read-only data explorer, and dedicated billing-test and email-delivery views. The control room reports real database counts and outstanding operational conditions. Admin account changes, secrets, payment settlement, historical trade records, and financial adjustments are intentionally not editable through a generic web form. In particular, credit adjustments must wait for transactional wallet/ledger writes on a MongoDB replica set. This is not a universal database editor.
 
 ## Quality checks
 
@@ -55,7 +59,7 @@ The admin area now includes a searchable account list with audited status/user/s
 - `npm run build`
 - `node --env-file=.env.local scripts/smoke-auth.mjs` (requires the app on port 3000 and MongoDB; creates then removes its own test account)
 - `node scripts/visual-check.mjs` (uses a locally installed Chrome and a running dev server; screenshots go to ignored `artifacts/`)
-- `node --env-file=.env.local scripts/smoke-demo.mjs` (requires the dev server, demo login enabled, and MongoDB; checks both one-click logins, role isolation, admin views, and audited demo-account changes)
+- `node --env-file=.env.local scripts/smoke-demo.mjs` (requires the dev server, demo login enabled, and MongoDB; checks both one-click logins, role isolation, audited account changes, platform gates, and signal moderation; restores control state)
 
 The scanner reads only fully closed candles from Binance's public Spot market-data endpoint. It calculates filter decisions and price levels in code; the AI writes only the thesis and risk explanation. Each completed scan costs one credit even if no setup qualifies; failed scans are refunded. The credit balance is atomically debited in MongoDB and a ledger entry is written, but crash-safe reconciliation and transactional billing are still required before paid launch. Do not treat a published idea as a validated strategy or execute it without independent review.
 
