@@ -13,5 +13,5 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const user = await User.findById(session.user.id).select("name role status isDemo").lean();
   if (!user || user.status !== "active") redirect("/login");
   const config = await getPlatformConfig();
-  return <WorkspaceShell name={user.name} role={user.role} isDemo={user.isDemo}>{config.announcement && <div className="mb-5 rounded-xl border border-[#8c7244] bg-[#3b2b16] px-4 py-3 text-sm font-semibold text-[#ffe0a6]">Platform notice: {config.announcement}</div>}{children}</WorkspaceShell>;
+  return <div className="workspace-experience"><WorkspaceShell name={user.name} role={user.role} isDemo={user.isDemo}>{config.announcement && <div className="mb-5 rounded-xl border border-[#8c7244] bg-[#3b2b16] px-4 py-3 text-sm font-semibold text-[#ffe0a6]">Platform notice: {config.announcement}</div>}{children}</WorkspaceShell></div>;
 }

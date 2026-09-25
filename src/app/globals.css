@@ -28,7 +28,7 @@
 
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
 body { margin: 0; background: #090d0c; color: #f5f8f1; font-family: var(--font-sans); }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
@@ -51,11 +51,46 @@ button { cursor: pointer; }
 .muted { color: #a8b4ab; }
 .app-scrollbar::-webkit-scrollbar { width: 7px; height: 7px; }
 .app-scrollbar::-webkit-scrollbar-thumb { background: #314035; border-radius: 10px; }
+.site-header { box-shadow: 0 12px 35px #02070255,inset 0 1px #c5ff4110; }
+.site-nav-link { position: relative; padding: .4rem 0; transition: color .2s; }
+.site-nav-link:hover { color: #fff; }
+.site-nav-link:after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; height: 1px; background: #c5ff41; transform: scaleX(0); transform-origin: left; transition: transform .25s; }
+.site-nav-link:hover:after,.site-nav-link:focus-visible:after { transform: scaleX(1); }
+.site-mobile-menu a { display: flex; align-items: center; justify-content: space-between; border-radius: .65rem; padding: .7rem .8rem; color: #d4e2ce; font-weight: 700; }
+.site-mobile-menu a:hover,.site-mobile-menu a:focus-visible { background: #263a20; color: #c5ff41; }
+.marketing-pages main:not(.marketing-home) { min-height: 65vh; background: linear-gradient(180deg,#081109a8 0%,#0a100ced 420px,#0a100c 850px),url('/aurora-landscape.webp') center top / 100% 850px no-repeat; }
+.marketing-pages main:not(.marketing-home) .surface { border-color: #3c5136; background: linear-gradient(145deg,#19271a,#101a12 75%); box-shadow: inset 0 1px #baff3510; }
+.marketing-pages main:not(.marketing-home) .surface:hover { border-color: #638944; }
+.workspace-experience > div { background: radial-gradient(ellipse at 65% 0%,#668e2320,transparent 32%),#0a100d; }
+.workspace-experience aside { position: sticky; top: 0; height: 100dvh; border-color: #334831; background: linear-gradient(180deg,#101c12,#0b140d); z-index: 40; }
+.workspace-experience aside .app-scrollbar { min-height: 0; }
+.workspace-experience header { position: sticky; top: 0; z-index: 30; border-color: #3a5134; background: #0d180fed; backdrop-filter: blur(18px); box-shadow: 0 12px 30px #01050166; }
+.workspace-experience nav[aria-label="Mobile workspace navigation"] { position: sticky; top: 80px; z-index: 29; border-color: #3a5134; background: #0d180ff2; backdrop-filter: blur(18px); }
+.workspace-experience nav[aria-label="Mobile workspace navigation"] a[href^="/admin"] { order: -1; }
+.workspace-experience .surface { border-color: #354b33; background: linear-gradient(150deg,#152217,#101a12 72%); box-shadow: inset 0 1px #c5ff410c,0 18px 45px #01060120; }
+.workspace-experience .surface-soft { border-color: #354b33; background: #101b12; }
+.workspace-experience .surface, .marketing-pages main:not(.marketing-home) .surface { transition: border-color .25s,box-shadow .25s; }
+.workspace-experience .surface:hover { border-color: #4e6d3b; }
+.workspace-experience table { border-collapse: separate; border-spacing: 0; }
+.workspace-experience table thead { background: #1b2a1c; color: #c4d5bc; }
+.workspace-experience table tbody tr { transition: background .2s; }
+.workspace-experience table tbody tr:hover { background: #c5ff4108; }
+.workspace-experience input:focus-visible,.workspace-experience select:focus-visible,.workspace-experience textarea:focus-visible,.auth-shell input:focus-visible,.marketing-pages input:focus-visible,.marketing-pages textarea:focus-visible { outline: 2px solid #a9e250; outline-offset: 2px; }
+.workspace-experience button:focus-visible,.workspace-experience a:focus-visible,.site-header a:focus-visible,.site-header summary:focus-visible { outline: 2px solid #c5ff41; outline-offset: 3px; }
+.marketing-pages main:not(.marketing-home) details[open] { border-color: #638944; }
+.workspace-intro { background: linear-gradient(110deg,#102115e8 0%,#193018e8 53%,#0b1c0edb 100%),url('/aurora-landscape.webp') center 48% / cover; box-shadow: inset 0 1px #c5ff4130,0 22px 60px #0005; }
+.workspace-intro-orbit { box-shadow: 0 0 0 50px #baff2407,0 0 0 95px #baff2405,inset 0 0 40px #baff2415; }
+.workspace-stat { background-image: radial-gradient(ellipse at 100% 0%,#aaff2514,transparent 56%); box-shadow: inset 0 1px #c5ff4110; transition: transform .25s,border-color .25s; }
+.workspace-stat:hover { transform: translateY(-3px); border-color: #739a49; }
+.auth-shell { background-image: radial-gradient(ellipse at 12% 42%,#6ca32b14,transparent 40%); }
+.auth-art { background: url('/aurora-landscape.webp') center / cover; }
+.auth-art-wash { background: linear-gradient(180deg,#06100840,#06100860 35%,#071009e8 100%),linear-gradient(90deg,#07100980,transparent); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
 
 /* Marketing art direction: editorial aurora, precise terminal, restrained motion. */
-body:has(.marketing-home) .site-header { position: absolute; inset: 0 0 auto; border-color: #c5ff4133; background: #07100955; }
+body:has(.marketing-home) .site-header { border-color: #c5ff4133; background: #071009d9; }
 .marketing-home { background: #0a100c; }
+.marketing-home .hero-scene > .mx-auto { padding-top: 5.5rem; }
 .marketing-home .section-heading { max-width: 900px; color: #f5fbef; font-size: clamp(2.5rem, 4vw, 4.5rem); font-weight: 700; letter-spacing: -.055em; line-height: 1.05; }
 .hero-scene { background: #08110a; }
 .hero-landscape { background-image: url('/aurora-landscape.webp'); background-position: center 60%; background-size: cover; animation: landscape-breathe 18s ease-in-out infinite alternate; }
@@ -92,7 +127,7 @@ body:has(.marketing-home) .site-header { position: absolute; inset: 0 0 auto; bo
 @keyframes landscape-breathe { to { transform: scale(1.035) translateY(-5px); } }
 @media (max-width: 1023px) { .hero-scene { min-height: 0; }.hero-shade { background: linear-gradient(180deg,#071009d9 0%,#071009ac 45%,#071009e8 100%); }.hero-landscape { background-position: 65% center; }.terminal-frame { transform: none; } }
 @media (max-width: 640px) { .marketing-home .section-heading { font-size: clamp(2.45rem,10vw,3.4rem); }.hero-scene { background-position: 70% center; }.terminal-frame { border-radius: 18px; }.terminal-label { font-size: .58rem; } }
-@media (prefers-reduced-motion: reduce) { .hero-copy,.hero-terminal { opacity: 1; transform: none; }.chart-draw { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .hero-copy,.hero-terminal { opacity: 1; transform: none; }.chart-draw { stroke-dashoffset: 0; }.workspace-stat:hover { transform: none; } }
 
 /* Reference-led editorial sections below the hero. */
 .coin-universe { background: linear-gradient(180deg,#0b160e,#0b130d); }
