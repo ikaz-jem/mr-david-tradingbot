@@ -121,7 +121,15 @@ body:has(.marketing-home) .site-header { position: absolute; inset: 0 0 auto; bo
 .security-visual { background: url('/security-shield.webp') right center / cover no-repeat; }
 .security-wash { background: linear-gradient(90deg,#071009 0%,#071009ec 32%,#0710099c 55%,#07100900 100%); }
 .readiness-item:not(:last-child) { border-right: 1px solid #3a4d35; }
+.decision-section { background: radial-gradient(ellipse at 74% 47%,#557c2421,transparent 42%),#0a130c; }
+.decision-frame { background: linear-gradient(145deg,#273d21,#0e1b10 32%,#182b17 77%,#253b1d); box-shadow: 0 28px 100px #0009,inset 0 1px #bdff4930; }
+.decision-frame:before { content: ''; position: absolute; inset: -35px; z-index: 0; border-radius: 45px; background: radial-gradient(ellipse at center,#baff3220,transparent 66%); filter: blur(20px); pointer-events: none; }
+.decision-row { transition: border-color .25s,background .25s,transform .25s; }
+.decision-row:hover { border-color: #789950; background: #1a2c19; transform: translateX(3px); }
+.credit-section { background: linear-gradient(118deg,#0c180e 0%,#132415 54%,#101b10 100%); }
+.credit-card { box-shadow: inset 0 1px #c5ff4110; transition: transform .3s,border-color .3s; }
+.credit-card:hover { transform: translateY(-4px); border-color: #759b44; }
 @keyframes coin-drift { to { transform: translateX(-25%); } }
 @media (max-width: 1023px) { .process-stage { border-right: 0!important; border-bottom: 1px solid #344a30; padding-bottom: 1.25rem; }.security-wash { background: linear-gradient(90deg,#071009f5,#071009bc); }.security-visual { background-position: 65% center; } }
 @media (max-width: 767px) { .rail-feature:not(:last-child),.readiness-item:not(:last-child) { border-right: 0; border-bottom: 1px solid #344b31; }.coin-marquee { mask-image: linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent); }.coin-token { padding: .45rem .8rem; }.coin-token span:nth-child(2) { font-size: .82rem; }.security-visual { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .coin-track { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .coin-track { animation: none; }.decision-row,.credit-card { transition: none; }.decision-row:hover,.credit-card:hover { transform: none; } }
