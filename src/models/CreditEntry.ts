@@ -2,6 +2,7 @@ import mongoose, { Schema, type Model, type InferSchemaType } from "mongoose";
 
 const creditEntrySchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+  productId: { type: String, required: true, default: "signals", index: true },
   amount: { type: Number, required: true },
   kind: { type: String, enum: ["welcome", "purchase", "reserve", "release", "capture", "adjustment", "refund"], required: true },
   sourceKey: { type: String, required: true, unique: true },

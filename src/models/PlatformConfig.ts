@@ -4,6 +4,10 @@ const platformConfigSchema = new Schema({
   key: { type: String, required: true, unique: true, default: "global" },
   registrationOpen: { type: Boolean, default: true },
   scansOpen: { type: Boolean, default: true },
+  exchangeConnectionsOpen: { type: Boolean, default: true },
+  paperReconciliationOpen: { type: Boolean, default: true },
+  contactIntakeOpen: { type: Boolean, default: true },
+  allowedScanSymbols: { type: [String], default: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] },
   announcement: { type: String, default: "" },
 }, { timestamps: true });
 

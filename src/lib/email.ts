@@ -1,7 +1,8 @@
 import { Resend } from "resend";
 import { EmailDelivery } from "@/models/EmailDelivery";
+import { getServiceConfig } from "@/lib/service-config";
 
-export function hasEmailProvider() { return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && process.env.APP_URL); }
+export async function hasEmailProvider() { const settings = await getServiceConfig(); return Boolean(settings.resendApiKey && settings.resendFromEmail && process.env.APP_URL); }
 
 export function escapeEmailHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
@@ -34,9 +35,10 @@ export function passwordChangedEmail(name: string) {
 }
 
 export async function sendEmail(input: { to: string; category: string; eventKey: string; subject: string; html: string; text: string; replyTo?: string }) {
-  if (!hasEmailProvider()) throw new Error("Resend is not configured");
-  const resend = new Resend(process.env.RESEND_API_KEY!);
-  const { data, error } = await resend.emails.send({ from: process.env.RESEND_FROM_EMAIL!, to: input.to, subject: input.subject, html: input.html, text: input.text, replyTo: input.replyTo }, { idempotencyKey: input.eventKey });
+  const settings = await getServiceConfig();
+  if (!settings.resendApiKey || !settings.resendFromEmail || !process.env.APP_URL) throw new Error("Resend is not configured");
+  const resend = new Resend(settings.resendApiKey);
+  const { data, error } = await resend.emails.send({ from: settings.resendFromEmail, to: input.to, subject: input.subject, html: input.html, text: input.text, replyTo: input.replyTo }, { idempotencyKey: input.eventKey });
   if (error || !data?.id) {
     await EmailDelivery.updateOne({ eventKey: input.eventKey }, { $set: { recipient: input.to, category: input.category, status: "failed", lastError: error?.message ?? "Provider returned no email ID" } }, { upsert: true }).catch(recordError => console.error("Email failure record unavailable", recordError));
     throw new Error(error?.message ?? "Email delivery was not accepted");

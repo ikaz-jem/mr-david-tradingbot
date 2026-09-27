@@ -5,13 +5,15 @@ import { connectDB } from "@/lib/db";
 import { EmptyState, PageIntro, SectionHeader } from "@/components/dashboard-ui";
 import { EmailDelivery } from "@/models/EmailDelivery";
 import { User } from "@/models/User";
+import { hasEmailProvider } from "@/lib/email";
+import { AdminEmailTestButton } from "@/components/admin-email-test-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminEmailsPage() {
   const session = await getServerSession(authOptions);
   await connectDB();
-  const actor = session?.user.id ? await User.findById(session.user.id).select("role status").lean() : null;
+  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
   if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
   const [deliveries, sent, delivered, issues] = await Promise.all([
     EmailDelivery.find().sort({ createdAt: -1 }).limit(100).lean(),
@@ -19,9 +21,11 @@ export default async function AdminEmailsPage() {
     EmailDelivery.countDocuments({ status: "delivered" }),
     EmailDelivery.countDocuments({ status: { $in: ["failed", "bounced", "complained"] } }),
   ]);
+  const emailReady = await hasEmailProvider();
   return <>
     <PageIntro eyebrow="Operations / communication" title="Email delivery" description="Resend send attempts and delivery status. Delivery tracking requires the verified Resend webhook configuration."/>
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Recorded sends" value={sent}/><Metric label="Delivered" value={delivered}/><Metric label="Issues" value={issues}/></div>
+    <section className="surface mb-5 rounded-[20px] p-5 sm:p-6"><SectionHeader title="Delivery test" detail="Sends only to the signed-in admin's verified email"/>{emailReady && !actor.isDemo ? <AdminEmailTestButton/> : <p className="text-sm text-muted">{actor.isDemo ? "Demo admins cannot send external email." : "Configure a verified Resend sender and API key before testing delivery."}</p>}</section>
     <section className="surface rounded-[20px] p-5 sm:p-6"><SectionHeader title="Recent messages" detail={`Latest ${deliveries.length} · no email body stored`}/>{deliveries.length ? <div className="app-scrollbar overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs"><thead className="border-b border-line uppercase tracking-widest text-muted"><tr><th className="py-3">Recipient</th><th>Category</th><th>Status</th><th>Last error</th><th>Updated</th></tr></thead><tbody className="divide-y divide-line">{deliveries.map(delivery => <tr key={String(delivery._id)}><td className="py-3">{delivery.recipient}</td><td>{delivery.category.replaceAll("_", " ")}</td><td className={issues && ["failed", "bounced", "complained"].includes(delivery.status) ? "text-[#ff939b]" : "text-accent"}>{delivery.status}</td><td className="max-w-60 truncate text-muted">{delivery.lastError || "—"}</td><td>{new Date(delivery.updatedAt).toLocaleString()}</td></tr>)}</tbody></table></div> : <EmptyState title="No email sends yet" text="Verification, reset, welcome, and contact emails will appear after Resend is configured and used."/>}</section>
   </>;
 }

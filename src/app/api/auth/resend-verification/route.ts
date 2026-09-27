@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
-  if (!hasEmailProvider()) return NextResponse.json({ error: "Email delivery is not configured." }, { status: 503 });
+  if (!await hasEmailProvider()) return NextResponse.json({ error: "Email delivery is not configured." }, { status: 503 });
   try {
     await connectDB();
     const user = await User.findOne({ email: parsed.data.email.toLowerCase(), emailVerifiedAt: null, status: "active" });

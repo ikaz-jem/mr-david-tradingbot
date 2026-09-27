@@ -1,5 +1,18 @@
 import { getServerSession } from "next-auth";
-import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import { authOptions } from "@/lib/auth";
+import { connectDB } from "@/lib/db";
+import { User } from "@/models/User";
 import { PageIntro } from "@/components/dashboard-ui";
-export default async function SettingsPage() { const session = await getServerSession(authOptions); return <><PageIntro eyebrow="Account" title="Settings" description="Manage your profile and, when enabled, your exchange connection and security preferences."/><div className="grid gap-5 lg:grid-cols-2"><section className="surface rounded-[20px] p-6"><UserRound className="size-5 text-accent"/><h2 className="mt-5 text-xl font-bold">Profile</h2><dl className="mt-6 divide-y divide-line text-sm"><div className="flex justify-between gap-4 py-4"><dt className="text-muted">Name</dt><dd className="font-semibold">{session?.user.name}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted">Email</dt><dd className="font-semibold">{session?.user.email}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted">Access</dt><dd className="font-semibold capitalize">{session?.user.role}</dd></div></dl></section><section className="surface rounded-[20px] p-6"><KeyRound className="size-5 text-accent"/><h2 className="mt-5 text-xl font-bold">Binance Spot connection</h2><p className="mt-3 text-sm leading-7 text-muted">Trade-only exchange connection and exact-order approval are being prepared for the next milestone. Never paste API keys into messages or support requests.</p><div className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-[#18231b] p-4 text-sm"><ShieldCheck className="size-5 text-accent"/><span>Withdrawal permissions will not be requested.</span></div></section></div></>; }
+import { AccountSettingsForms } from "@/components/account-settings-forms";
+
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const session = await getServerSession(authOptions);
+  await connectDB();
+  const user = await User.findById(session!.user.id).select("name email isDemo role").lean();
+  if (!user) return null;
+  return <><PageIntro eyebrow="Account" title="Settings" description="Keep your account information current and control how you access the workspace."/><AccountSettingsForms name={user.name} email={user.email} isDemo={user.isDemo}/><section className="surface mt-5 rounded-[20px] p-6"><ShieldCheck className="size-5 text-accent"/><h2 className="mt-4 text-xl font-bold">Connected exchanges</h2><p className="mt-2 max-w-2xl text-sm leading-7 text-muted">Manage and verify your read-only Binance Spot connection. Never paste API keys into messages or support requests.</p><Link href="/dashboard/exchanges" className="button-primary mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-xs">Manage exchanges <ArrowUpRight className="size-4"/></Link></section></>;
+}

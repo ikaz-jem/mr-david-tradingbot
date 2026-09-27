@@ -10,7 +10,7 @@ const coins = [
   { symbol: "SOL", name: "Solana", pair: "SOL / USDT", tone: "sol" },
 ] as const;
 const faqs = [
-  { question: "Does Enrivea Signal hold my crypto?", answer: "No. The product is designed for research and user-approved exchange trading. Your assets remain in your own exchange account. Live exchange connections are not enabled in this preview." },
+  { question: "Does Enrivea Signal hold my crypto?", answer: "No. Your assets remain at Binance. A dedicated read-only Spot API key can show balances when exchange encryption is configured; it cannot place orders or move funds. Live trading is not enabled." },
   { question: "What does an analysis credit cover?", answer: "One completed market scan costs one credit, including a scan that finds no qualifying setup. A failed scan should not consume a credit. Credit purchases are not active yet." },
   { question: "Does AI decide the entry and stop?", answer: "No. Deterministic filters calculate market conditions and reference levels from closed exchange candles. AI explains the evidence and risks; it does not invent prices." },
   { question: "Can I execute a trade today?", answer: "Not yet. User-confirmed Binance Spot execution is a guarded next integration. No signal can submit an order on its own." },

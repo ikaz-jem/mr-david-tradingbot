@@ -7,11 +7,13 @@ import { connectDB } from "@/lib/db";
 import { isSameOrigin } from "@/lib/request-origin";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { User } from "@/models/User";
+import { notifyUser } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("set_role"), value: z.enum(["user", "staff"]), reason: z.string().trim().min(8).max(300) }),
   z.object({ action: z.literal("set_status"), value: z.enum(["active", "suspended"]), reason: z.string().trim().min(8).max(300) }),
+  z.object({ action: z.literal("set_country"), value: z.string().regex(/^[A-Z]{2}$/), reason: z.string().trim().min(12).max(300) }),
 ]);
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -27,23 +29,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const actor = await User.findById(session.user.id).select("role status isDemo").lean();
     if (!actor || actor.role !== "admin" || actor.status !== "active") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
     if (session.user.id === id) return NextResponse.json({ error: "You cannot change your own access." }, { status: 403 });
-    const target = await User.findById(id).select("role status isDemo").lean();
+    const target = await User.findById(id).select("role status isDemo countryCode").lean();
     if (!target) return NextResponse.json({ error: "Account not found." }, { status: 404 });
     if (target.role === "admin") return NextResponse.json({ error: "Admin account changes require a separate privileged workflow." }, { status: 403 });
     if (actor.isDemo && !target.isDemo) return NextResponse.json({ error: "Demo admins can manage only demo accounts." }, { status: 403 });
-    const field = parsed.data.action === "set_role" ? "role" : "status";
-    const before = target[field];
+    const field = parsed.data.action === "set_role" ? "role" : parsed.data.action === "set_status" ? "status" : "countryCode";
+    const before = target[field] ?? "unset";
     if (before === parsed.data.value) return NextResponse.json({ ok: true, unchanged: true });
     const audit = await AdminAuditEvent.create({ actorId: actor._id, targetUserId: target._id, targetType: "user", targetId: id, action: parsed.data.action, before, after: parsed.data.value, reason: parsed.data.reason });
     let applied = false;
     try {
-      const result = await User.updateOne({ _id: target._id, role: target.role, status: target.status }, { $set: { [field]: parsed.data.value }, $inc: { authVersion: 1 } });
+      const result = await User.updateOne({ _id: target._id, role: target.role, status: target.status, countryCode: target.countryCode }, { $set: { [field]: parsed.data.value }, $inc: { authVersion: 1 } });
       if (result.modifiedCount !== 1) {
         await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } });
         return NextResponse.json({ error: "Account changed concurrently. Refresh and try again." }, { status: 409 });
       }
       applied = true;
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "applied" } });
+      await notifyUser({ userId: id, kind: "account", title: "Account access changed", body: `Your ${field} was changed from ${before} to ${parsed.data.value}. Reason: ${parsed.data.reason}`, href: "/dashboard/settings", sourceKey: `admin-access:${audit.id}` }).catch(error => console.error("Account notification failed", error));
       return NextResponse.json({ ok: true });
     } catch (error) {
       if (!applied) await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } }).catch(recordError => console.error("Admin audit update failed", recordError));

@@ -7,6 +7,7 @@ import { isSameOrigin } from "@/lib/request-origin";
 import { PaperOutcome } from "@/models/PaperOutcome";
 import { Signal } from "@/models/Signal";
 import { User } from "@/models/User";
+import { getPlatformConfig } from "@/lib/platform-config";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   try {
     await connectDB();
+    if (!(await getPlatformConfig()).paperReconciliationOpen) return NextResponse.json({ error: "Paper outcome refresh is temporarily paused by operations." }, { status: 503 });
     if (!await User.exists({ _id: session.user.id, status: "active" })) return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
     const signals = await Signal.find({ userId: session.user.id }).sort({ createdAt: -1 }).limit(30).lean();
     const outcomes = await PaperOutcome.find({ signalId: { $in: signals.map(signal => signal._id) } }).lean();

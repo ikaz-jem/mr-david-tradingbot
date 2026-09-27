@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { EmptyState, PageIntro, SectionHeader } from "@/components/dashboard-ui";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
+import { ExchangeConnection } from "@/models/ExchangeConnection";
 import { CreditEntry } from "@/models/CreditEntry";
 import { EmailDelivery } from "@/models/EmailDelivery";
 import { Order } from "@/models/Order";
@@ -14,9 +15,12 @@ import { PaystackWebhookEvent } from "@/models/PaystackWebhookEvent";
 import { ScanRun } from "@/models/ScanRun";
 import { Signal } from "@/models/Signal";
 import { User } from "@/models/User";
+import { ProductAccount } from "@/models/ProductAccount";
+import { BillingPurchase } from "@/models/BillingPurchase";
+import { Notification } from "@/models/Notification";
 
 export const dynamic = "force-dynamic";
-const categories = ["users", "scans", "signals", "paper", "orders", "credits", "paystack", "payment-events", "emails", "admin-audit"] as const;
+const categories = ["users", "products", "scans", "signals", "paper", "orders", "connections", "credits", "billing", "paystack", "payment-events", "notifications", "emails", "admin-audit"] as const;
 type Category = typeof categories[number];
 type Table = { title: string; columns: string[]; rows: string[][]; total: number };
 const id = (value: unknown) => String(value);
@@ -43,7 +47,13 @@ async function loadTable(category: Category, skip: number): Promise<Table> {
   switch (category) {
     case "users": {
       const [total, records] = await Promise.all([User.countDocuments(), User.find().sort({ createdAt: -1 }).skip(skip).limit(50).select("email name role status countryCode creditBalance emailVerifiedAt isDemo createdAt").lean()]);
-      return { title: "Users", total, columns: ["Email", "Name", "Role", "Status", "Country", "Credits", "Verified", "Demo", "Created"], rows: records.map(row => [row.email, row.name, row.role, row.status, row.countryCode || "—", String(row.creditBalance), date(row.emailVerifiedAt), row.isDemo ? "Yes" : "No", date(row.createdAt)]) };
+      const accounts = await ProductAccount.find({ userId: { $in: records.map(row => row._id) }, productId: "signals" }).select("userId creditBalance").lean();
+      const balances = new Map(accounts.map(account => [String(account.userId), account.creditBalance]));
+      return { title: "Users", total, columns: ["Email", "Name", "Role", "Status", "Country", "Research credits", "Verified", "Demo", "Created"], rows: records.map(row => [row.email, row.name, row.role, row.status, row.countryCode || "—", String(balances.get(String(row._id)) ?? row.creditBalance), date(row.emailVerifiedAt), row.isDemo ? "Yes" : "No", date(row.createdAt)]) };
+    }
+    case "products": {
+      const [total, records] = await Promise.all([ProductAccount.countDocuments(), ProductAccount.find().sort({ updatedAt: -1 }).skip(skip).limit(50).lean()]);
+      return { title: "Product accounts", total, columns: ["User ID", "Product", "Plan", "Status", "Credits", "Period end", "Updated"], rows: records.map(row => [id(row.userId), row.productId, row.planId ?? "—", row.subscriptionStatus, String(row.creditBalance), date(row.currentPeriodEnd), date(row.updatedAt)]) };
     }
     case "scans": {
       const [total, records] = await Promise.all([ScanRun.countDocuments(), ScanRun.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
@@ -61,9 +71,17 @@ async function loadTable(category: Category, skip: number): Promise<Table> {
       const [total, records] = await Promise.all([Order.countDocuments(), Order.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
       return { title: "Exchange orders", total, columns: ["User ID", "Pair", "Side", "Quantity", "Status", "Client ID", "Exchange ID", "Created"], rows: records.map(row => [id(row.userId), row.symbol, row.side, row.quantity, row.status, row.clientOrderId, row.exchangeOrderId || "—", date(row.createdAt)]) };
     }
+    case "connections": {
+      const [total, records] = await Promise.all([ExchangeConnection.countDocuments(), ExchangeConnection.find().sort({ createdAt: -1 }).skip(skip).limit(50).select("userId provider market environment keyLast4 status access ipRestricted lastCheckedAt createdAt").lean()]);
+      return { title: "Exchange connections", total, columns: ["User ID", "Provider", "Market", "Environment", "Key ending", "Status", "Access", "IP restricted", "Last checked", "Created"], rows: records.map(row => [id(row.userId), row.provider, row.market, row.environment, `····${row.keyLast4}`, row.status, row.access, row.ipRestricted ? "Yes" : "No", date(row.lastCheckedAt), date(row.createdAt)]) };
+    }
     case "credits": {
       const [total, records] = await Promise.all([CreditEntry.countDocuments(), CreditEntry.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
-      return { title: "Credit ledger", total, columns: ["User ID", "Amount", "Kind", "Source key", "Note", "Created"], rows: records.map(row => [id(row.userId), String(row.amount), row.kind, row.sourceKey, row.note, date(row.createdAt)]) };
+      return { title: "Credit ledger", total, columns: ["User ID", "Product", "Amount", "Kind", "Source key", "Note", "Created"], rows: records.map(row => [id(row.userId), row.productId ?? "signals", String(row.amount), row.kind, row.sourceKey, row.note, date(row.createdAt)]) };
+    }
+    case "billing": {
+      const [total, records] = await Promise.all([BillingPurchase.countDocuments(), BillingPurchase.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
+      return { title: "Live billing purchases", total, columns: ["User ID", "Product", "Kind", "Item", "Credits", "Amount minor", "Currency", "Status", "Reference", "Verified"], rows: records.map(row => [id(row.userId), row.productId, row.kind, row.itemId, String(row.credits), String(row.expectedAmount), row.currency, row.status, row.reference, date(row.verifiedAt)]) };
     }
     case "paystack": {
       const [total, records] = await Promise.all([PaystackCheckout.countDocuments(), PaystackCheckout.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
@@ -72,6 +90,10 @@ async function loadTable(category: Category, skip: number): Promise<Table> {
     case "payment-events": {
       const [total, records] = await Promise.all([PaystackWebhookEvent.countDocuments(), PaystackWebhookEvent.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
       return { title: "Payment webhook events", total, columns: ["Type", "Reference", "Outcome", "Created"], rows: records.map(row => [row.type, row.reference || "—", row.outcome, date(row.createdAt)]) };
+    }
+    case "notifications": {
+      const [total, records] = await Promise.all([Notification.countDocuments(), Notification.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
+      return { title: "Notifications", total, columns: ["User ID", "Kind", "Title", "Read", "Created"], rows: records.map(row => [id(row.userId), row.kind, row.title, row.readAt ? "Yes" : "No", date(row.createdAt)]) };
     }
     case "emails": {
       const [total, records] = await Promise.all([EmailDelivery.countDocuments(), EmailDelivery.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);

@@ -9,25 +9,34 @@ An Enrivea-owned crypto research SaaS in active development. The current build i
 | Landing, pricing, about, contact, legal, cookies | Implemented; legal content is a review draft, proposed prices are not for sale |
 | Email/password sign-up and sign-in | Implemented with NextAuth credentials and MongoDB; verified email required when Resend is configured |
 | Transactional email | Resend verification, welcome, password reset/change, contact delivery, and signed delivery webhooks implemented; live delivery awaits domain and API configuration |
-| Welcome credits and append-only credit records | Implemented |
+| Product-scoped credits and monthly access | Trade research wallet, welcome credits, expiry gate, verified-purchase ledger, and admin adjustments implemented; additional products need catalog registration |
+| Account and notifications | Profile-name edit, password rotation/session invalidation, and an event-driven inbox implemented; verified email-change flow pending |
 | Public Binance Spot market overview | Implemented with graceful unavailable state |
 | AI trade scans | On-demand Binance Spot 4h scanner for BTC/ETH/SOL; AI explanation of qualifying long setups; no-setup scans recorded |
 | Signal outcomes and performance | Forward-only paper outcome engine and scorecard; actual exchange P&L pending |
-| Binance account connection and one-click execution | Models and pages in place; API-key security and order service pending |
-| Paid packages | Three proposed monthly plans displayed; Paystack test-only checkout adapter and signed webhook receipt implemented, but no credits are granted and live checkout is disabled |
-| Admin dashboard | Role-guarded control room, audited account access, registration/scan switches, workspace announcement, signal invalidation, event timeline, billing-test and email-delivery views; production observability still pending |
+| Binance Spot account connection | Read-only HMAC key verification, AES-256-GCM storage, permission checks, on-demand Spot balances, and disconnect implemented; order service pending |
+| Paid packages | Three monthly passes and two top-ups have a gated Paystack live checkout and transaction-verified fulfillment path. Live checkout is off until written merchant approval, prices, country scope, webhook, and secret are configured; existing sandbox is separate and never grants credits |
+| Admin dashboard | Role-guarded control room, audited operational settings, encrypted AI/Resend integration configuration, signal invalidation, activity, billing, and email-delivery views; production observability still pending |
 | Local demo sign-in | One-click user/admin preview behind `NODE_ENV=development` and `DEMO_LOGIN_ENABLED=true`; demo sessions are rejected in production |
 
-The interface intentionally shows empty states for unimplemented trading, billing, and analytics features. It does not display invented returns or pretend a proposed price is an active subscription.
+The interface intentionally shows empty states for unimplemented trading and analytics features. It does not display invented returns or permit payment while merchant setup is incomplete.
 
 ## Local setup
 
 1. Install Node.js 20.9 or later and Docker Desktop, a local MongoDB service, or a MongoDB connection.
 2. Run `npm install`.
-3. Copy `.env.example` to `.env.local`. Set `MONGODB_URI`, `NEXTAUTH_URL`, `APP_URL`, and a long random `NEXTAUTH_SECRET`. Set `OPENAI_API_KEY` and `OPENAI_MODEL` to enable scans.
+3. Copy `.env.example` to `.env.local`. Set `MONGODB_URI`, `NEXTAUTH_URL`, `APP_URL`, and a long random `NEXTAUTH_SECRET` (at least 32 characters). Set `OPENAI_API_KEY` and `OPENAI_MODEL` in the environment, or add them later at `/admin/controls` to enable scans.
 4. For local MongoDB, run `docker compose up -d`.
 5. Run `npm run dev` and open `http://localhost:3000`.
 6. Register an account. In local development only, accounts are automatically marked verified if Resend is not configured. To grant the initial admin role, run `npm run make-admin -- your@email.example` and sign out and back in.
+
+### Binance Spot read-only connection
+
+Set `EXCHANGE_ENCRYPTION_KEY` to a stable, randomly generated 32-byte key encoded as base64 or 64 hex characters. Keep the same value on every server instance and across deployments; losing or changing it makes stored API credentials unreadable. Set it separately in Vercel for each environment. Never commit the key or paste it into chat. A local key can be generated with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"` and copied directly into ignored `.env.local`.
+
+Verified non-demo users can open `/dashboard/exchanges`, enter a dedicated Binance **HMAC read-only** API key and secret, and load non-zero Spot balances on request. The server signs Binance's `GET /sapi/v1/account/apiRestrictions` request and rejects keys with trading, withdrawal, transfer, margin, or futures privileges before encrypted storage. It rechecks permissions on every balance refresh. The key and secret are never returned to the browser after submission or shown to admins. Disconnection deletes the stored ciphertext. There is no order endpoint or one-click execution in this release.
+
+Binance's private API must be reachable from the deployment. Restricting a key to server IPs is recommended only when outbound egress is stable; a standard serverless deployment can have changing egress IPs. Test from the actual deployment environment. Country eligibility, key rotation, security review, retention policy, and operational incident response remain launch gates.
 
 ### Vercel authentication URLs
 
@@ -36,12 +45,12 @@ Set `NEXTAUTH_URL` and `APP_URL` in Vercel's environment settings to the exact p
 ## Resend setup
 
 1. Verify an Enrivea-owned sending domain or subdomain in Resend and publish its required DNS records. Use an address on that verified domain for `RESEND_FROM_EMAIL`; do not use a personal inbox as the sender.
-2. Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `RESEND_SUPPORT_EMAIL` in the deployment environment. In production, registration refuses to create an account if this configuration is absent. Password-reset and contact requests also refuse to send when the provider is unavailable.
+2. Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `RESEND_SUPPORT_EMAIL` in the deployment environment or the admin configuration page. In production, registration refuses to create an account if the API key and verified sender are absent. Password-reset and contact requests also refuse to send when the provider is unavailable.
 3. Set `APP_URL` and `NEXTAUTH_URL` to the exact public HTTPS origin. Email links are built from `APP_URL`.
-4. In Resend, point the webhook to `https://<your-domain>/api/webhooks/resend`, subscribe to delivered, bounced, complained, failed, and suppressed email events, and set `RESEND_WEBHOOK_SECRET`. The route verifies the raw payload signature before accepting an event.
+4. In Resend, point the webhook to `https://<your-domain>/api/webhooks/resend`, subscribe to delivered, bounced, complained, failed, and suppressed email events, and set `RESEND_WEBHOOK_SECRET` in the environment or admin configuration page. The route verifies the raw payload signature before accepting an event.
 5. Test verification, resend, welcome, reset, password-change, contact, and webhook events with a real controlled mailbox in staging. The local smoke test cannot prove external delivery.
 
-Do not paste API keys or webhook secrets into chat, browser forms, or commits. Rotate credentials if they have been exposed.
+Enter provider credentials only in the authenticated admin configuration form or deployment secret manager; never paste them into chat, public forms, logs, or commits. The admin form stores encrypted dashboard overrides in MongoDB and never displays saved secrets. It derives encryption from `NEXTAUTH_SECRET`, so keep that deployment secret stable and back it up securely; rotating it requires migrating or re-entering all dashboard-stored provider credentials. Removing an override restores any deployment-variable fallback. A "configured" badge means a value exists, not that the provider has accepted it; use staging delivery and scan tests to verify it.
 
 Never commit `.env.local`, exchange API credentials, or encryption keys. Do not enable exchange withdrawal permissions for this product.
 
@@ -49,7 +58,7 @@ Never commit `.env.local`, exchange API credentials, or encryption keys. Do not 
 
 Set `DEMO_LOGIN_ENABLED=true` in `.env.local` and run `npm run dev`. The dev script binds only to `127.0.0.1`; open `/login` and use **Demo user** or **Demo admin**. These buttons provision dedicated `@enrivea.invalid` local accounts with random unusable passwords. They appear only in development, and demo sessions are invalid outside development. The admin demo may change only demo accounts; it cannot modify real local users. The demo banner identifies the preview, and no example trade returns or payments are fabricated. Set the flag to `false` or remove it to disable this access. Do not deploy a development server publicly.
 
-The admin area includes a searchable account list with audited status/user/staff-role changes, registration and scan pause/resume controls, a workspace announcement, and a signal-invalidation workflow with an owner-visible reason. It also has a 20-second-refresh activity timeline, paginated read-only data explorer, and dedicated billing-test and email-delivery views. The control room reports real database counts and outstanding operational conditions. Admin account changes, secrets, payment settlement, historical trade records, and financial adjustments are intentionally not editable through a generic web form. In particular, credit adjustments must wait for transactional wallet/ledger writes on a MongoDB replica set. This is not a universal database editor.
+The admin area includes a searchable account list with audited status/user/staff-role changes; reason-required controls for registration, AI scans, new Binance connections, paper reconciliation, contact intake, supported research pairs, and a workspace announcement; encrypted AI and Resend settings; targeted in-app notifications; and signal invalidation. It also has an activity timeline, paginated data and order views, billing operations, system checks, and an email-delivery view with a self-addressed Resend test for real admins. Real admins can make reason-required credit corrections or extend monthly access; wallet, ledger, and audit changes use a MongoDB transaction, so a replica set is required. Demo admins cannot use financial controls or send external test email. This is not a universal database editor and it never exposes payment-card or exchange-key data. Payment credentials and eligibility flags remain deployment-managed until merchant approval and compliance controls are established.
 
 ## Quality checks
 
@@ -61,33 +70,41 @@ The admin area includes a searchable account list with audited status/user/staff
 - `node scripts/visual-check.mjs` (uses a locally installed Chrome and a running dev server; screenshots go to ignored `artifacts/`)
 - `node --env-file=.env.local scripts/smoke-demo.mjs` (requires the dev server, demo login enabled, and MongoDB; checks both one-click logins, role isolation, audited account changes, platform gates, and signal moderation; restores control state)
 
-The scanner reads only fully closed candles from Binance's public Spot market-data endpoint. It calculates filter decisions and price levels in code; the AI writes only the thesis and risk explanation. Each completed scan costs one credit even if no setup qualifies; failed scans are refunded. The credit balance is atomically debited in MongoDB and a ledger entry is written, but crash-safe reconciliation and transactional billing are still required before paid launch. Do not treat a published idea as a validated strategy or execute it without independent review.
+The scanner reads only fully closed candles from Binance's public Spot market-data endpoint. It calculates filter decisions and price levels in code; the AI writes only the thesis and risk explanation. Each completed scan costs one Trade research credit even if no setup qualifies; failed scans are refunded. Welcome credits work before the first paid month. After a paid month ends, unused credits remain but scans are blocked until renewal. Scan debit and ledger recording still need crash-safe reconciliation before paid launch. Do not treat a published idea as a validated strategy or execute it without independent review.
 
 Paper outcomes are recalculated on demand from later fully closed 1-minute Spot candles, never from candles before publication. They use conservative intrabar ordering, 0.10% assumed fee and 0.05% assumed slippage on both entry and exit. A paper result is **not** a live fill or real P&L. A scheduled background reconciler, missing-data monitoring, and a larger forward sample are still needed before reporting strategy performance publicly.
 
 ## Next implementation gates
 
 1. Confirm Enrivea's contracting entity, initial allowed and blocked jurisdictions, and legal advice on research signals and user-directed execution. Enforce eligibility server-side before any paid or trade action.
-2. Obtain written Paystack approval for this crypto-research/execution product and confirm the Nigerian merchant's permitted customer countries. Complete the subscription lifecycle, idempotent per-paid-period credit grants, refunds/chargebacks, and support operations in a transactional database. A return URL must never grant credits. Integrate NOWPayments monthly invoices separately after merchant approval.
+2. Obtain written Paystack approval for this crypto-research/execution product and confirm the Nigerian merchant's permitted customer countries. Approve currency and exact prices, configure the signed live webhook, and test checkout and one-time fulfillment on a staging replica set. Implement refunds/chargebacks and customer-country verification before launch. A return URL never grants credits. Integrate NOWPayments separately after merchant approval.
 3. Add crash-safe scan-credit reconciliation, rate limits, abuse monitoring, and a transactional/outbox approach for billable events. Expand deterministic scanner tests and historic-data reproducibility.
 4. Automate paper outcome reconciliation, monitor missing market data, and evaluate a meaningful forward sample before making performance claims.
-5. Add Binance Spot testnet first: encrypted no-withdrawal API credentials, account permission checks, an order preview, explicit user confirmation, idempotent submission, exchange-status reconciliation, and audit logs. Keep live execution off until security and legal review.
+5. Prototype Binance Spot execution on testnet separately: key-upgrade consent, an order preview, explicit user confirmation, idempotent submission, exchange-status reconciliation, and audit logs. Keep live execution off until security and legal review. The existing live-account connection is read-only and cannot trade.
 6. Configure Resend in staging and production, test actual delivery, review legal copy/cookies/data retention, obtain a security assessment, add production observability/backups, and run a staged launch checklist.
 
 ## Billing decision (September 2026)
 
-Enrivea is a Nigerian legal entity. The intended product model is three **monthly subscriptions**, with credits replenished only for a successfully paid period. Paystack is the first requested integration; NOWPayments monthly crypto invoices are a later rail. The sending domain for Resend is still undecided. No provider credentials or merchant approval have been supplied, so there is **no live checkout**.
+Enrivea is a Nigerian legal entity. The implemented model is three **manually renewable monthly passes** with credits granted only for a successfully verified payment, plus separate top-ups available during active access. Unused credits carry forward but cannot be consumed after a paid period ends until renewal. Automatic recurring card charges are **not** enabled. Paystack is the first requested rail; NOWPayments is later. The sending domain for Resend is still undecided. No provider credentials, approved prices, or merchant approval have been supplied, so live checkout remains off.
 
 Direct Stripe Checkout is not assumed available to this Nigerian entity: Stripe's country list labels Nigeria as an extended-network/Paystack market. Paystack's current international-payment eligibility page lists cryptocurrency and investment businesses as ineligible. Stripe's restricted-business policy separately calls for approval of financial/crypto-related services. Do not activate Paystack or Stripe live payments without written provider confirmation and a supported merchant arrangement. "Worldwide" describes the intended reach, not permission to sell, provide regulated advice, or execute orders in every jurisdiction. Country eligibility must be defined and enforced before paid or exchange activity.
 
-NOWPayments documents recurring email invoices, but renewal is not proof of payment. Each paid billing period must be verified through a signed IPN and, where necessary, a server-side provider status check before granting credits. The product needs explicit credit rollover/expiry rules, cancellation and refund rules, and a billing-support process before launch.
+NOWPayments documents recurring email invoices, but renewal is not proof of payment. Each paid billing period must be verified through a signed IPN and, where necessary, a server-side provider status check before granting credits. Cancellation, refunds, chargebacks, taxes, and billing-support policies still need legal and operational sign-off.
+
+### Gated live Paystack checkout
+
+The live adapter at `/api/billing/checkout` creates a one-time Paystack checkout for a monthly pass or top-up. `/api/webhooks/paystack-live` validates the raw-body SHA-512 signature, verifies the transaction with Paystack, checks domain, amount, currency, reference, and customer email, then grants access and credits with an idempotent MongoDB transaction. The callback URL only returns the customer to billing; it never grants credits. The existing `/api/webhooks/paystack` remains test-only and does not fulfill purchases.
+
+Do **not** enable live billing without written provider acceptance of Enrivea's exact crypto-research and execution scope, lawful customer-country restrictions, and a MongoDB replica set. Paystack's published guidance lists crypto and investment businesses as ineligible for international payments and crypto trading as ineligible for Nigerian merchants. The environment gates `PAYSTACK_MERCHANT_APPROVED`, `PAYSTACK_WEBHOOK_CONFIRMED`, and `BILLING_LIVE_ENABLED` must all be `true` alongside a live secret, approved currency, `PAYSTACK_ALLOWED_COUNTRIES`, and server-owned minor-unit prices for each plan and pack. A country code on the account is also required; it must be verified through an onboarding/compliance process, not simply typed by a user. This checkout is a prepared integration, **not** authorization to operate it.
+
+Before a public launch, test successful and repeated webhooks, rejected amounts/currencies, concurrent purchases, failed transactions, refunds/chargebacks, database outages, and manual reconciliation. Configure production monitoring and a support workflow for payments stuck in `review` or `pending`.
 
 ### Paystack sandbox adapter
 
-In a **local development environment only**, create three monthly plans in Paystack's test dashboard. Set `PAYSTACK_SANDBOX_ENABLED=true`, a `sk_test_` value in `PAYSTACK_TEST_SECRET_KEY`, and the matching `PLN_` codes in `PAYSTACK_TEST_PLAN_STARTER`, `PAYSTACK_TEST_PLAN_TRADER`, and `PAYSTACK_TEST_PLAN_DESK`. Never place a live key in these variables. The checkout endpoint fetches each test plan from Paystack to confirm its interval and amount before initializing a test subscription; it ignores browser-supplied prices. The Credits page then offers a clearly labeled sandbox button.
+In a **local development environment only**, create three monthly plans in Paystack's test dashboard. Set `PAYSTACK_SANDBOX_ENABLED=true`, a `sk_test_` value in `PAYSTACK_TEST_SECRET_KEY`, and the matching `PLN_` codes in `PAYSTACK_TEST_PLAN_STARTER`, `PAYSTACK_TEST_PLAN_TRADER`, and `PAYSTACK_TEST_PLAN_DESK`. Never place a live key in these variables. The sandbox checkout endpoint fetches each test plan from Paystack to confirm its interval and amount before initializing a test subscription; it ignores browser-supplied prices. Sandbox activity is visible to admins, not issued as credits.
 
 Set the Paystack test webhook URL to a public staging/tunnel HTTPS endpoint ending in `/api/webhooks/paystack`. The handler verifies the raw-body HMAC-SHA512 signature and re-verifies successful transactions with Paystack before recording them as `paid_test`. It does **not** issue credits, activate access, send billing email, or support live charges. Paystack's callback redirect is only navigation, not payment evidence. Localhost itself cannot receive Paystack webhooks.
 
-Before implementing fulfillment, settle plan prices in the merchant currency, credit expiry/rollover, taxes, eligibility, cancellation/refund rules, and a MongoDB replica set so the grant and ledger write can be transactional. Sandbox integration does not imply Paystack has accepted this merchant category.
+Sandbox integration does not imply Paystack has accepted this merchant category.
 
 See [the research plan](reports/AI%20crypto%20trading%20SaaS%20plan.md) for the full architecture and market comparison.
