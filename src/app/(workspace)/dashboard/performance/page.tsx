@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { PaperOutcome } from "@/models/PaperOutcome";
 import { Signal } from "@/models/Signal";
+import { ResearchOutcomeChart } from "@/components/research-outcome-chart";
+import { seedDemoResearch } from "@/lib/demo-workspace";
 import { PaperOutcomeRefresh } from "@/components/paper-outcome-refresh";
 import { EmptyState, PageIntro, SectionHeader, StatCard } from "@/components/dashboard-ui";
 
@@ -13,6 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function PerformancePage() {
   const session = await getServerSession(authOptions);
   await connectDB();
+  if (session!.user.isDemo) await seedDemoResearch(session!.user.id, session!.user.name ?? "Demo user");
   const [published, outcomes, [stats]] = await Promise.all([
     Signal.countDocuments({ userId: session!.user.id }),
     PaperOutcome.find({ userId: session!.user.id }).sort({ updatedAt: -1 }).limit(20).lean(),
@@ -31,6 +34,7 @@ export default async function PerformancePage() {
       <StatCard label="Paper win rate" value={stats?.count ? `${(stats.wins / stats.count * 100).toFixed(1)}%` : "—"} detail="Of closed simulations" icon={BarChart3}/>
       <StatCard label="Avg net paper return" value={stats ? `${stats.average >= 0 ? "+" : ""}${stats.average.toFixed(2)}%` : "—"} detail="After assumed costs" icon={ChartNoAxesCombined} accent/>
     </div>
+    <ResearchOutcomeChart demo={Boolean(session!.user.isDemo)} data={outcomes.filter(item => typeof item.netReturnPct === "number").reverse().map(item => ({ symbol: byId.get(String(item.signalId))?.symbol.replace("USDT", "") ?? "Idea", returnPct: item.netReturnPct! }))}/>
     <section className="surface rounded-[20px] p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4"><SectionHeader title="Forward paper scorecard" detail="Published signals only · 1-minute Spot candles"/><PaperOutcomeRefresh/></div>
       <p className="mb-5 max-w-3xl text-xs leading-5 text-muted">Paper method: observe only full candles after publication; enter at the published level if crossed; assume the adverse stop when a candle touches both boundaries; 0.10% fee and 0.05% slippage per side. Unfilled setups expire. This is simulated research, not an account statement or actual P&L.</p>

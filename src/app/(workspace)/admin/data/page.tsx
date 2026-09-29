@@ -18,6 +18,7 @@ import { User } from "@/models/User";
 import { ProductAccount } from "@/models/ProductAccount";
 import { BillingPurchase } from "@/models/BillingPurchase";
 import { Notification } from "@/models/Notification";
+import { DemoDataExplorer } from "@/components/demo-data-explorer";
 
 export const dynamic = "force-dynamic";
 const categories = ["users", "products", "scans", "signals", "paper", "orders", "connections", "credits", "billing", "paystack", "payment-events", "notifications", "emails", "admin-audit"] as const;
@@ -29,11 +30,12 @@ const date = (value: Date | null | undefined) => value ? new Date(value).toLocal
 export default async function AdminDataPage({ searchParams }: { searchParams: Promise<{ category?: string; page?: string }> }) {
   const session = await getServerSession(authOptions);
   await connectDB();
-  const actor = session?.user.id ? await User.findById(session.user.id).select("role status").lean() : null;
+  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
   if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
   const params = await searchParams;
   const category: Category = categories.includes(params.category as Category) ? params.category as Category : "users";
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  if (actor.isDemo) return <DemoDataExplorer category={category} page={page}/>;
   const table = await loadTable(category, (page - 1) * 50);
   return <>
     <PageIntro eyebrow="Operations / records" title="Data explorer" description="Paginated read-only records across the platform. Password hashes, email tokens, API credentials, and other secrets are never shown here."/>

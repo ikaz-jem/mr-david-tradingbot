@@ -13,7 +13,7 @@ export function AdminEmailTestButton() {
       const response = await fetch("/api/admin/emails/test", { method: "POST" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Test email failed.");
-      setMessage("Test email accepted by Resend. Watch the delivery record below."); router.refresh();
+      setMessage(result.simulated ? "Simulated email saved in the outbox. No external email was sent." : "Test email accepted by Resend. Watch the delivery record below."); router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Test email failed."); }
     finally { setBusy(false); }
   }

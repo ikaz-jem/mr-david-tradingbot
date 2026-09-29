@@ -2,10 +2,11 @@ import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
 import { ensureWelcomeCredits } from "@/lib/credits";
 import { User } from "@/models/User";
+import { seedDemoResearch } from "@/lib/demo-workspace";
 
-export function demoLoginEnabled() {
-  return process.env.NODE_ENV === "development" && process.env.DEMO_LOGIN_ENABLED === "true";
-}
+import { demoLoginEnabled } from "@/lib/demo-policy";
+import { ensureDemoCustomers } from "@/lib/demo-customers";
+export { demoLoginEnabled } from "@/lib/demo-policy";
 
 export async function getOrCreateDemoUser(role: "user" | "admin") {
   if (!demoLoginEnabled()) return null;
@@ -27,5 +28,7 @@ export async function getOrCreateDemoUser(role: "user" | "admin") {
   }
   if (!user) return null;
   await ensureWelcomeCredits(user.id);
+  await seedDemoResearch(user.id, user.name);
+  if (role === "admin") await ensureDemoCustomers();
   return user;
 }

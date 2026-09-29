@@ -56,7 +56,7 @@ export function evaluatePaperSignal(signal: PaperSignal, candles: PaperCandle[],
 }
 
 export async function getPaperCandles(symbol: string, start: number, end: number): Promise<PaperCandle[]> {
-  if (!/^(BTC|ETH|SOL)USDT$/.test(symbol)) throw new Error("Unsupported paper symbol");
+  if (!scanSymbols.includes(symbol as (typeof scanSymbols)[number])) throw new Error("Unsupported paper symbol");
   const dataBase = process.env.BINANCE_DATA_BASE_URL ?? "https://data-api.binance.vision";
   const url = `${dataBase}/api/v3/klines?symbol=${symbol}&interval=1m&startTime=${start}&endTime=${end}&limit=1000`;
   const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
@@ -65,3 +65,5 @@ export async function getPaperCandles(symbol: string, start: number, end: number
   if (!Array.isArray(rows)) throw new Error("Invalid paper market data");
   return rows.map(row => ({ openTime: Number(row[0]), open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), closeTime: Number(row[6]) }));
 }
+import { scanSymbols } from "./scan-markets.ts";
+

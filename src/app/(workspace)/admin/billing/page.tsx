@@ -10,6 +10,7 @@ import { BillingPurchase } from "@/models/BillingPurchase";
 import { ProductAccount } from "@/models/ProductAccount";
 import { AdminBillingAdjustment } from "@/components/admin-billing-adjustment";
 import { liveBillingConfig } from "@/lib/billing-catalog";
+import { DemoBillingOperations } from "@/components/demo-billing-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function AdminBillingPage() {
   await connectDB();
   const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
   if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
+  if (actor.isDemo) return <><PageIntro eyebrow="Commerce operations" title="Billing operations" description="Review demo memberships, separate product wallets, renewals, and credit purchases."/><DemoBillingOperations/></>;
   const [checkouts, webhooks, pending, paidTest, reviews, livePurchases, productAccounts, eligibleUsers] = await Promise.all([
     PaystackCheckout.find().sort({ createdAt: -1 }).limit(100).lean(),
     PaystackWebhookEvent.find().sort({ createdAt: -1 }).limit(50).lean(),

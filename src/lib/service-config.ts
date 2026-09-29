@@ -45,23 +45,23 @@ export async function getServiceConfig() {
   };
 }
 
-export async function getServiceConfigStatus() {
+export async function getServiceConfigStatus(isDemo = false) {
   await connectDB();
-  const stored = await ServiceConfig.findOne({ key: "global" }).lean();
+  const stored = await ServiceConfig.findOne({ key: isDemo ? "demo" : "global" }).lean();
   const configured = {
-    openaiApiKey: Boolean(stored?.openaiApiKeyEncrypted || process.env.OPENAI_API_KEY),
-    openaiModel: stored?.openaiModel || process.env.OPENAI_MODEL || "",
-    resendApiKey: Boolean(stored?.resendApiKeyEncrypted || process.env.RESEND_API_KEY),
-    resendFromEmail: stored?.resendFromEmail || process.env.RESEND_FROM_EMAIL || "",
-    resendSupportEmail: stored?.resendSupportEmail || process.env.RESEND_SUPPORT_EMAIL || "",
-    resendWebhookSecret: Boolean(stored?.resendWebhookSecretEncrypted || process.env.RESEND_WEBHOOK_SECRET),
+    openaiApiKey: Boolean(stored?.openaiApiKeyEncrypted || (isDemo ? "" : process.env.OPENAI_API_KEY)),
+    openaiModel: stored?.openaiModel || (isDemo ? "" : process.env.OPENAI_MODEL) || "",
+    resendApiKey: Boolean(stored?.resendApiKeyEncrypted || (isDemo ? "" : process.env.RESEND_API_KEY)),
+    resendFromEmail: stored?.resendFromEmail || (isDemo ? "" : process.env.RESEND_FROM_EMAIL) || "",
+    resendSupportEmail: stored?.resendSupportEmail || (isDemo ? "" : process.env.RESEND_SUPPORT_EMAIL) || "",
+    resendWebhookSecret: Boolean(stored?.resendWebhookSecretEncrypted || (isDemo ? "" : process.env.RESEND_WEBHOOK_SECRET)),
   };
   return { ...configured, encryptionReady: serviceEncryptionReady(), source: {
-    openaiApiKey: stored?.openaiApiKeyEncrypted ? "dashboard" : process.env.OPENAI_API_KEY ? "deployment" : "unset",
-    openaiModel: stored?.openaiModel ? "dashboard" : process.env.OPENAI_MODEL ? "deployment" : "unset",
-    resendApiKey: stored?.resendApiKeyEncrypted ? "dashboard" : process.env.RESEND_API_KEY ? "deployment" : "unset",
-    resendFromEmail: stored?.resendFromEmail ? "dashboard" : process.env.RESEND_FROM_EMAIL ? "deployment" : "unset",
-    resendSupportEmail: stored?.resendSupportEmail ? "dashboard" : process.env.RESEND_SUPPORT_EMAIL ? "deployment" : "unset",
-    resendWebhookSecret: stored?.resendWebhookSecretEncrypted ? "dashboard" : process.env.RESEND_WEBHOOK_SECRET ? "deployment" : "unset",
+    openaiApiKey: stored?.openaiApiKeyEncrypted ? "dashboard" : (isDemo ? "" : process.env.OPENAI_API_KEY) ? "deployment" : "unset",
+    openaiModel: stored?.openaiModel ? "dashboard" : (isDemo ? "" : process.env.OPENAI_MODEL) ? "deployment" : "unset",
+    resendApiKey: stored?.resendApiKeyEncrypted ? "dashboard" : (isDemo ? "" : process.env.RESEND_API_KEY) ? "deployment" : "unset",
+    resendFromEmail: stored?.resendFromEmail ? "dashboard" : (isDemo ? "" : process.env.RESEND_FROM_EMAIL) ? "deployment" : "unset",
+    resendSupportEmail: stored?.resendSupportEmail ? "dashboard" : (isDemo ? "" : process.env.RESEND_SUPPORT_EMAIL) ? "deployment" : "unset",
+    resendWebhookSecret: stored?.resendWebhookSecretEncrypted ? "dashboard" : (isDemo ? "" : process.env.RESEND_WEBHOOK_SECRET) ? "deployment" : "unset",
   } };
 }

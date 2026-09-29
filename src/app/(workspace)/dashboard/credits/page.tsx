@@ -10,6 +10,7 @@ import { BillingPurchase } from "@/models/BillingPurchase";
 import { plans } from "@/lib/plans";
 import { EmptyState, PageIntro, SectionHeader } from "@/components/dashboard-ui";
 import { BillingPurchaseButton } from "@/components/billing-purchase-button";
+import { MembershipConsole } from "@/components/membership-console";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function CreditsPage() {
   const session = await getServerSession(authOptions);
   await connectDB();
   const userId = session!.user.id;
+  if (session!.user.isDemo) return <><PageIntro eyebrow="Membership & wallets" title="Credits & billing" description="A single monthly membership unlocks your workspace. Each product has its own balance and consumption rate."/><MembershipConsole/></>;
   const balance = await getCreditBalance(userId);
   const [account, ledger, purchases] = await Promise.all([
     ProductAccount.findOne({ userId, productId: "signals" }).lean(),

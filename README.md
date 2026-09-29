@@ -17,7 +17,7 @@ An Enrivea-owned crypto research SaaS in active development. The current build i
 | Binance Spot account connection | Read-only HMAC key verification, AES-256-GCM storage, permission checks, on-demand Spot balances, and disconnect implemented; order service pending |
 | Paid packages | Three monthly passes and two top-ups have a gated Paystack live checkout and transaction-verified fulfillment path. Live checkout is off until written merchant approval, prices, country scope, webhook, and secret are configured; existing sandbox is separate and never grants credits |
 | Admin dashboard | Role-guarded control room, audited operational settings, encrypted AI/Resend integration configuration, signal invalidation, activity, billing, and email-delivery views; production observability still pending |
-| Local demo sign-in | One-click user/admin preview behind `NODE_ENV=development` and `DEMO_LOGIN_ENABLED=true`; demo sessions are rejected in production |
+| Public demo sign-in | Always-visible user/admin showcase on deployed and development builds; demo-scoped data and restricted admin routes |
 
 The interface intentionally shows empty states for unimplemented trading and analytics features. It does not display invented returns or permit payment while merchant setup is incomplete.
 
@@ -56,7 +56,11 @@ Never commit `.env.local`, exchange API credentials, or encryption keys. Do not 
 
 ### Local dashboard previews
 
-Set `DEMO_LOGIN_ENABLED=true` in `.env.local` and run `npm run dev`. The dev script binds only to `127.0.0.1`; open `/login` and use **Demo user** or **Demo admin**. These buttons provision dedicated `@enrivea.invalid` local accounts with random unusable passwords. They appear only in development, and demo sessions are invalid outside development. The admin demo may change only demo accounts; it cannot modify real local users. The demo banner identifies the preview, and no example trade returns or payments are fabricated. Set the flag to `false` or remove it to disable this access. Do not deploy a development server publicly.
+Open `/login` on the deployed site and use **Demo user** or **Demo admin**. These buttons are always available, without registration or an environment flag. Normal production configuration still requires a reachable MongoDB, a strong NEXTAUTH_SECRET, and NEXTAUTH_URL/APP_URL matching the deployed HTTPS origin. No deployment was performed by the local implementation.
+
+The showcase uses shared `@enrivea.invalid` accounts with random unusable passwords. Never enter private information. Demo admin routes are allowlisted; live operational pages and live admin APIs are blocked. Demo account operations are restricted to demo users, and configuration uses separate demo records. The two showcase login accounts cannot be banned or demoted; use the four seeded sample customers to demonstrate those actions.
+
+The Users page includes search/status/role filters, ban/unban, suspend/restore, role/country changes, session revocation, and an audit history. Every action requires a reason. **View as user** is a 15-minute, actor-bound, audited, read-only workspace preview—not a customer session or permission to trade, change credentials, or spend money.
 
 The admin area includes a searchable account list with audited status/user/staff-role changes; reason-required controls for registration, AI scans, new Binance connections, paper reconciliation, contact intake, supported research pairs, and a workspace announcement; encrypted AI and Resend settings; targeted in-app notifications; and signal invalidation. It also has an activity timeline, paginated data and order views, billing operations, system checks, and an email-delivery view with a self-addressed Resend test for real admins. Real admins can make reason-required credit corrections or extend monthly access; wallet, ledger, and audit changes use a MongoDB transaction, so a replica set is required. Demo admins cannot use financial controls or send external test email. This is not a universal database editor and it never exposes payment-card or exchange-key data. Payment credentials and eligibility flags remain deployment-managed until merchant approval and compliance controls are established.
 

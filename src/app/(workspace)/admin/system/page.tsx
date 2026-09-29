@@ -13,11 +13,19 @@ import { PageIntro, SectionHeader } from "@/components/dashboard-ui";
 import { exchangeEncryptionReady } from "@/lib/exchange-credentials";
 import { ProductAccount } from "@/models/ProductAccount";
 import { liveBillingConfig } from "@/lib/billing-catalog";
+import { getServerSession } from "next-auth";
+import { notFound } from "next/navigation";
+import { authOptions } from "@/lib/auth";
+import { DemoSystemHealth } from "@/components/demo-system-health";
 
 export const dynamic = "force-dynamic";
 
 export default async function SystemPage() {
   await connectDB();
+  const session = await getServerSession(authOptions);
+  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
+  if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
+  if (actor.isDemo) return <DemoSystemHealth/>;
   const users = await User.find().sort({ createdAt: -1 }).limit(100).select("creditBalance").lean();
   const [ledger, accounts, staleJobs, sentEmails, emailFailures, paystackCheckouts, paystackReviews, liveReviews, controls, servicesStatus] = await Promise.all([
     CreditEntry.aggregate<{ _id: string; balance: number }>([

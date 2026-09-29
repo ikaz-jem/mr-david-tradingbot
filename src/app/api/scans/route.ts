@@ -15,6 +15,7 @@ import { notifyUser } from "@/lib/notifications";
 import { ensureProductAccount, productAccessActive, SIGNALS_PRODUCT_ID } from "@/lib/credits";
 import { ProductAccount } from "@/models/ProductAccount";
 import { getServiceConfig } from "@/lib/service-config";
+import { runDemoScan } from "@/lib/demo-scan";
 
 export const runtime = "nodejs";
 
@@ -30,9 +31,10 @@ export async function POST(request: Request) {
   let captureRecorded = false;
   let signalId: mongoose.Types.ObjectId | undefined;
   const userId = new mongoose.Types.ObjectId(session.user.id);
-  const { symbol, requestId } = parsed.data;
+  const { symbol, requestId, interval } = parsed.data;
   try {
     await connectDB();
+    if (session.user.isDemo) return await runDemoScan(session.user.id, symbol, interval, requestId);
     const config = await getPlatformConfig();
     if (!config.scansOpen) return NextResponse.json({ error: "Research scans are temporarily paused by operations. No credit was charged." }, { status: 503 });
     if (!config.allowedScanSymbols.includes(symbol)) return NextResponse.json({ error: "This pair is temporarily unavailable for research. No credit was charged." }, { status: 503 });
@@ -46,18 +48,18 @@ export async function POST(request: Request) {
     const existing = await ScanRun.findOne({ userId, requestId }).lean();
     if (existing) return NextResponse.json({ error: existing.status === "completed" ? "This scan was already completed. Refresh to see it." : "This scan request was already submitted." }, { status: 409 });
     if (await ScanRun.exists({ userId, status: "running", createdAt: { $gt: new Date(Date.now() - 60_000) } })) return NextResponse.json({ error: "A scan is already running. Wait for it to finish." }, { status: 429 });
-    const run = await ScanRun.create({ userId, requestId, symbol });
+    const run = await ScanRun.create({ userId, requestId, symbol, interval });
     runId = run._id;
 
-    const analysis = analyzeCandles(await getClosedCandles(symbol));
-    const narrative = analysis.hasSetup ? await explainSetup(symbol, analysis) : null;
+    const analysis = analyzeCandles(await getClosedCandles(symbol, interval));
+    const narrative = analysis.hasSetup ? await explainSetup(symbol, analysis, interval, service) : null;
     const debited = await ProductAccount.findOneAndUpdate({ _id: productAccount._id, creditBalance: { $gte: 1 }, $or: [{ subscriptionStatus: "none" }, { subscriptionStatus: "active", currentPeriodEnd: { $gt: new Date() } }] }, { $inc: { creditBalance: -1 } });
     if (!debited) throw new Error("No credits remain for this scan");
     charged = true;
-    await CreditEntry.create({ userId, productId: SIGNALS_PRODUCT_ID, amount: -1, kind: "capture", sourceKey: `scan:${runId}`, note: `${symbol} 4h research scan` });
+    await CreditEntry.create({ userId, productId: SIGNALS_PRODUCT_ID, amount: -1, kind: "capture", sourceKey: `scan:${runId}`, note: `${symbol} ${interval} research scan` });
     captureRecorded = true;
     if (analysis.hasSetup && narrative) {
-      const signal = await Signal.create({ userId, symbol, interval: "4h", side: "buy", status: "watch", entry: analysis.entry, stop: analysis.stop, target: analysis.target, thesis: narrative.thesis, riskNote: narrative.riskNote, modelVersion: service.openaiModel, marketFacts: analysis.facts, dataCutoff: analysis.dataCutoff, expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), analysisCost: 1 });
+      const signal = await Signal.create({ userId, symbol, interval, side: "buy", status: "watch", entry: analysis.entry, stop: analysis.stop, target: analysis.target, thesis: narrative.thesis, riskNote: narrative.riskNote, modelVersion: service.openaiModel, marketFacts: analysis.facts, dataCutoff: analysis.dataCutoff, expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), analysisCost: 1 });
       signalId = signal._id;
     }
     await ScanRun.updateOne({ _id: runId }, { $set: { status: "completed", outcome: analysis.hasSetup ? "setup" : "no_setup", summary: analysis.summary, signalId: signalId ?? null, dataCutoff: analysis.dataCutoff, charged: true } });

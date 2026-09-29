@@ -14,11 +14,11 @@ const entries: { field: Field; title: string; hint: string; secret: boolean; pla
   { field: "resendWebhookSecret", title: "Resend webhook secret", hint: "Verifies delivery and bounce events from Resend.", secret: true, placeholder: "Paste a new webhook secret" },
 ];
 
-export function AdminServiceConfig({ initial }: { initial: Status }) {
+export function AdminServiceConfig({ initial, demo = false }: { initial: Status; demo?: boolean }) {
   const router = useRouter();
   const [status, setStatus] = useState(initial);
   const [values, setValues] = useState<Record<Field, string>>({ openaiApiKey: "", openaiModel: initial.openaiModel, resendApiKey: "", resendFromEmail: initial.resendFromEmail, resendSupportEmail: initial.resendSupportEmail, resendWebhookSecret: "" });
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(demo ? "Interactive demo configuration" : "");
   const [pending, setPending] = useState<Field | null>(null);
   const [message, setMessage] = useState("");
 
@@ -31,7 +31,7 @@ export function AdminServiceConfig({ initial }: { initial: Status }) {
       setStatus(result.status);
       if (entries.find(entry => entry.field === field)?.secret) setValues(previous => ({ ...previous, [field]: "" }));
       else if (action === "clear") setValues(previous => ({ ...previous, [field]: result.status[field] }));
-      setReason(""); setMessage(`${entries.find(entry => entry.field === field)?.title} ${action === "set" ? "saved" : "cleared"}. The change is active on the next request.`);
+      setReason(demo ? "Interactive demo configuration" : ""); setMessage(`${entries.find(entry => entry.field === field)?.title} ${action === "set" ? "saved" : "cleared"}. The change is active on the next request.`);
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Configuration was not saved."); }
     finally { setPending(null); }

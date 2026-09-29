@@ -4,18 +4,25 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { User } from "@/models/User";
 import { EmptyState, PageIntro, SectionHeader } from "@/components/dashboard-ui";
+import { getServerSession } from "next-auth";
+import { notFound } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 const statuses = ["all", "intent", "submitted", "unknown", "partial", "filled", "rejected", "cancelled"] as const;
 
 export default async function AdminOrdersPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
   await connectDB();
+  const session = await getServerSession(authOptions);
+  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
+  if (!actor || !["admin", "staff"].includes(actor.role) || actor.status !== "active") notFound();
+  const userIds = actor.isDemo ? (await User.find({ isDemo: true }).select("_id").lean()).map(user => user._id) : null;
   const params = await searchParams;
   const status = statuses.includes(params.status as typeof statuses[number]) ? params.status as typeof statuses[number] : "all";
   const page = Math.min(1000, Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1));
-  const filter = status === "all" ? {} : { status };
+  const filter = { ...(status === "all" ? {} : { status }), ...(userIds ? { userId: { $in: userIds } } : {}) };
   const [total, unknown, filled, matching, orders] = await Promise.all([
-    Order.countDocuments(), Order.countDocuments({ status: "unknown" }), Order.countDocuments({ status: "filled" }),
+    Order.countDocuments(userIds ? { userId: { $in: userIds } } : {}), Order.countDocuments({ ...(userIds ? { userId: { $in: userIds } } : {}), status: "unknown" }), Order.countDocuments({ ...(userIds ? { userId: { $in: userIds } } : {}), status: "filled" }),
     Order.countDocuments(filter), Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * 50).limit(50).lean(),
   ]);
   const owners = await User.find({ _id: { $in: orders.map(order => order.userId) } }).select("email").lean();

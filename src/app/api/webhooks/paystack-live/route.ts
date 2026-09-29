@@ -41,9 +41,9 @@ export async function POST(request: Request) {
     }
     await ensureProductAccount(String(purchase.userId), purchase.productId);
     const paidAt = new Date();
-    await db.connection.transaction(async mongoSession => {
-      const claimed = await BillingPurchase.findOneAndUpdate({ _id: purchase._id, status: { $in: ["initializing", "pending", "review"] } }, { $set: { status: "paid", verifiedAt: paidAt, providerTransactionId: Number.isSafeInteger(transaction.id) ? String(transaction.id) : null } }, { session: mongoSession });
-      if (!claimed) return;
+    const fulfilled = await db.connection.transaction(async mongoSession => {
+      const claimed = await BillingPurchase.findOneAndUpdate({ _id: purchase._id, status: { $in: ["initializing", "pending", "review", "failed"] } }, { $set: { status: "paid", verifiedAt: paidAt, providerTransactionId: Number.isSafeInteger(transaction.id) ? String(transaction.id) : null } }, { session: mongoSession });
+      if (!claimed) return false;
       const wallet = await ProductAccount.findOne({ userId: purchase.userId, productId: purchase.productId }).session(mongoSession);
       if (!wallet) throw new Error("Product wallet missing");
       if (purchase.kind === "monthly") {
@@ -57,7 +57,9 @@ export async function POST(request: Request) {
       wallet.lastPaymentReference = reference;
       await wallet.save({ session: mongoSession });
       await CreditEntry.create([{ userId: purchase.userId, productId: purchase.productId, amount: purchase.credits, kind: "purchase", sourceKey: `paystack:${reference}`, note: purchase.kind === "monthly" ? `${purchase.itemId} monthly allowance` : `${purchase.itemId} credit top-up` }], { session: mongoSession });
+      return true;
     });
+    if (!fulfilled) return NextResponse.json({ ok: true, duplicate: true });
     await notifyUser({ userId: String(purchase.userId), kind: "billing", title: purchase.kind === "monthly" ? "Monthly access active" : "Credits added", body: `${purchase.credits} credits were added to your Trade research balance.`, href: "/dashboard/credits", sourceKey: `billing:${createHash("sha256").update(reference).digest("hex")}` }).catch(error => console.error("Billing notification failed", error));
     return NextResponse.json({ ok: true });
   } catch (error) {

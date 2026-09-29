@@ -8,18 +8,21 @@ import { AdminSignalModeration } from "@/components/admin-signal-moderation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { User } from "@/models/User";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSignalsPage() {
   const session = await getServerSession(authOptions);
   await connectDB();
-  const actor = session?.user.id ? await User.findById(session.user.id).select("role isDemo").lean() : null;
+  const actor = session?.user.id ? await User.findById(session.user.id).select("role isDemo status").lean() : null;
+  if (!actor || !["admin", "staff"].includes(actor.role) || actor.status !== "active") notFound();
+  const scope = actor.isDemo ? { userId: { $in: (await User.find({ isDemo: true }).select("_id").lean()).map(user => user._id) } } : {};
   const [published, completed, failed, noSetup, paperClosed, recent, latestSignals] = await Promise.all([
-    Signal.countDocuments(), ScanRun.countDocuments({ status: "completed" }), ScanRun.countDocuments({ status: "failed" }),
-    ScanRun.countDocuments({ status: "completed", outcome: "no_setup" }), PaperOutcome.countDocuments({ status: "closed" }),
-    ScanRun.find().sort({ createdAt: -1 }).limit(20).select("symbol status outcome summary createdAt").lean(),
-    Signal.find().sort({ createdAt: -1 }).limit(20).select("userId symbol status side entry stop target moderationReason createdAt").lean(),
+    Signal.countDocuments(scope), ScanRun.countDocuments({ ...scope, status: "completed" }), ScanRun.countDocuments({ ...scope, status: "failed" }),
+    ScanRun.countDocuments({ ...scope, status: "completed", outcome: "no_setup" }), PaperOutcome.countDocuments({ ...scope, status: "closed" }),
+    ScanRun.find(scope).sort({ createdAt: -1 }).limit(20).select("symbol status outcome summary createdAt").lean(),
+    Signal.find(scope).sort({ createdAt: -1 }).limit(20).select("userId symbol status side entry stop target moderationReason createdAt").lean(),
   ]);
   const demoOwnerIds = actor?.isDemo ? new Set((await User.find({ _id: { $in: latestSignals.map(signal => signal.userId) }, isDemo: true }).select("_id").lean()).map(user => String(user._id))) : null;
   return <><PageIntro eyebrow="Operations / research" title="Signal health" description="Monitor scan throughput, published setups, failed jobs, and paper-result coverage."/>

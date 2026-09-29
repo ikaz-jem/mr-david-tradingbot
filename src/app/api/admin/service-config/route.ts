@@ -28,10 +28,11 @@ export async function POST(request: Request) {
   if (!serviceEncryptionReady()) return NextResponse.json({ error: "A strong NEXTAUTH_SECRET must be set at deployment before credentials can be stored." }, { status: 503 });
   try {
     await connectDB();
-    const actor = await User.findOne({ _id: session.user.id, role: "admin", status: "active" }).select("_id").lean();
+    const actor = await User.findOne({ _id: session.user.id, role: "admin", status: "active" }).select("_id isDemo").lean();
     if (!actor) return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    await ServiceConfig.updateOne({ key: "global" }, { $setOnInsert: { key: "global" } }, { upsert: true });
-    const current = await ServiceConfig.findOne({ key: "global" }).lean();
+    const key = actor.isDemo ? "demo" : "global";
+    await ServiceConfig.updateOne({ key }, { $setOnInsert: { key } }, { upsert: true });
+    const current = await ServiceConfig.findOne({ key }).lean();
     if (!current) throw new Error("Service config missing");
     const storedField = secret ? `${field}Encrypted` : field;
     const before = String(current[storedField as keyof typeof current] ?? "");
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Configuration changed concurrently. Refresh and retry." }, { status: 409 });
       }
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "applied" } });
-      return NextResponse.json({ ok: true, status: await getServiceConfigStatus() }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ ok: true, status: await getServiceConfigStatus(Boolean(actor.isDemo)) }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } }).catch(() => undefined);
       throw error;

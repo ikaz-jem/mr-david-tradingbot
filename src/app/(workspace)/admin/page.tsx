@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { DemoControlRoom } from "@/components/demo-control-room";
 import { Activity, Coins, CreditCard, Radar, Users, Workflow } from "lucide-react";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
@@ -18,6 +21,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   await connectDB();
+  const session = await getServerSession(authOptions);
+  if (session?.user.isDemo) return <DemoControlRoom/>;
   const [users, demoUsers, scans, signals, orders, running, unknownOrders, emailIssues, paymentReviews, livePaymentReviews, pendingAudits, balances, recentUsers, recentScans, controls, connections, connectionIssues] = await Promise.all([
     User.countDocuments({ isDemo: { $ne: true } }),
     User.countDocuments({ isDemo: true }),

@@ -7,6 +7,7 @@ import { EmailDelivery } from "@/models/EmailDelivery";
 import { User } from "@/models/User";
 import { hasEmailProvider } from "@/lib/email";
 import { AdminEmailTestButton } from "@/components/admin-email-test-button";
+import { DemoEmailOperations } from "@/components/demo-email-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function AdminEmailsPage() {
   await connectDB();
   const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
   if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
+  if (actor.isDemo) return <DemoEmailOperations/>;
   const [deliveries, sent, delivered, issues] = await Promise.all([
     EmailDelivery.find().sort({ createdAt: -1 }).limit(100).lean(),
     EmailDelivery.countDocuments(),

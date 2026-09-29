@@ -7,12 +7,14 @@ import { BinanceConnectionPanel } from "@/components/binance-connection-panel";
 import { PageIntro } from "@/components/dashboard-ui";
 import { ExchangeConnection } from "@/models/ExchangeConnection";
 import { User } from "@/models/User";
+import { DemoExchanges } from "@/components/demo-exchanges";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExchangesPage() {
   const session = await getServerSession(authOptions);
   await connectDB();
+  if (session!.user.isDemo) return <><PageIntro eyebrow="Connected workspace" title="Exchange connections" description="Explore a unified multi-exchange workspace without sharing credentials or moving funds."/><DemoExchanges/></>;
   const [user, connection] = await Promise.all([
     User.findById(session!.user.id).select("isDemo").lean(),
     ExchangeConnection.findOne({ userId: session!.user.id, provider: "binance", market: "spot", environment: "live" }).lean(),

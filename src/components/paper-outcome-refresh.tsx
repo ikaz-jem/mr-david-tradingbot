@@ -15,7 +15,7 @@ export function PaperOutcomeRefresh() {
       const response = await fetch("/api/paper/reconcile", { method: "POST" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Paper outcomes unavailable");
-      setMessage(result.failures.length ? `${result.updated} updated; ${result.failures.length} could not be checked. Try later.` : `${result.updated} outcome${result.updated === 1 ? "" : "s"} checked.`);
+      setMessage(result.message ?? (result.failures.length ? `${result.updated} updated; ${result.failures.length} could not be checked. Try later.` : `${result.updated} outcome${result.updated === 1 ? "" : "s"} checked.`));
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Paper outcomes unavailable"); }
     finally { setPending(false); }

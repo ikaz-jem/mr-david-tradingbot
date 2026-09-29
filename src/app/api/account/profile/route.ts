@@ -16,7 +16,7 @@ export async function PATCH(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Enter a name between 2 and 100 characters." }, { status: 400 });
   try {
     await connectDB();
-    const user = await User.findOneAndUpdate({ _id: session.user.id, status: "active", isDemo: false }, { $set: { name: parsed.data.name } }, { new: true }).select("name").lean();
+    const user = await User.findOneAndUpdate({ _id: session.user.id, status: "active" }, { $set: { name: parsed.data.name } }, { new: true }).select("name").lean();
     if (!user) return NextResponse.json({ error: "Profile changes are unavailable for this account." }, { status: 403 });
     return NextResponse.json({ ok: true, name: user.name });
   } catch (error) { console.error("Profile update failed", error); return NextResponse.json({ error: "Could not update your profile." }, { status: 503 }); }

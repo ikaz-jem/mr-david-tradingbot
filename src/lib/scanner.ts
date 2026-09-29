@@ -1,14 +1,15 @@
 import { z } from "zod";
+import { scanSymbols, scanIntervals, intervalMilliseconds, type ScanInterval } from "./scan-markets.ts";
+export { scanSymbols } from "./scan-markets.ts";
 
-export const scanSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const;
-export const scanInput = z.object({ symbol: z.enum(scanSymbols), requestId: z.uuid() });
+export const scanInput = z.object({ symbol: z.enum(scanSymbols), interval: z.enum(scanIntervals).default("4h"), requestId: z.uuid() });
 export type ScanCandle = { openTime: number; closeTime: number; open: number; high: number; low: number; close: number; volume: number };
 
 const DATA_BASE = process.env.BINANCE_DATA_BASE_URL ?? "https://data-api.binance.vision";
-const INTERVAL_MS = 4 * 60 * 60 * 1000;
 
-export async function getClosedCandles(symbol: (typeof scanSymbols)[number]): Promise<ScanCandle[]> {
-  const response = await fetch(`${DATA_BASE}/api/v3/klines?symbol=${symbol}&interval=4h&limit=100`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+export async function getClosedCandles(symbol: (typeof scanSymbols)[number], interval: ScanInterval = "4h"): Promise<ScanCandle[]> {
+  const INTERVAL_MS = intervalMilliseconds[interval];
+  const response = await fetch(`${DATA_BASE}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=100`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(`Market data unavailable (${response.status})`);
   const rows = await response.json();
   if (!Array.isArray(rows)) throw new Error("Invalid market data");

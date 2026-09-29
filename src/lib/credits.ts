@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { CreditEntry } from "@/models/CreditEntry";
 import { User } from "@/models/User";
 import { ProductAccount } from "@/models/ProductAccount";
+import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 
 export const SIGNALS_PRODUCT_ID = "signals";
 
@@ -24,6 +25,7 @@ export async function ensureWelcomeCredits(userId: string) {
 }
 
 export async function getCreditBalance(userId: string) {
+  if (await User.exists({ _id: userId, isDemo: true })) return (await ensureDemoWorkspace(userId))?.wallets.get("signals") ?? 0;
   await ensureWelcomeCredits(userId);
   const account = await ensureProductAccount(userId);
   return account?.creditBalance ?? 0;

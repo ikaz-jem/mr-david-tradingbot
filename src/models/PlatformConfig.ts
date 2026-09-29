@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { scanSymbols } from "@/lib/scan-markets";
 
 const platformConfigSchema = new Schema({
   key: { type: String, required: true, unique: true, default: "global" },
@@ -7,7 +8,7 @@ const platformConfigSchema = new Schema({
   exchangeConnectionsOpen: { type: Boolean, default: true },
   paperReconciliationOpen: { type: Boolean, default: true },
   contactIntakeOpen: { type: Boolean, default: true },
-  allowedScanSymbols: { type: [String], default: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] },
+  allowedScanSymbols: { type: [String], default: [...scanSymbols] },
   announcement: { type: String, default: "" },
 }, { timestamps: true });
 

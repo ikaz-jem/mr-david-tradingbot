@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
 import { LoginForm } from "@/components/auth-forms";
-import { demoLoginEnabled } from "@/lib/demo";
+import { demoLoginEnabled } from "@/lib/demo-policy";
 export const metadata: Metadata = { title: "Sign in" };
 export default function LoginPage() { return <LoginForm demoEnabled={demoLoginEnabled()}/>; }

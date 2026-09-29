@@ -17,6 +17,7 @@ import { PaystackWebhookEvent } from "@/models/PaystackWebhookEvent";
 import { ScanRun } from "@/models/ScanRun";
 import { Signal } from "@/models/Signal";
 import { User } from "@/models/User";
+import { DemoActivity } from "@/components/demo-activity";
 
 export const dynamic = "force-dynamic";
 type Item = { id: string; kind: string; title: string; detail: string; at: Date; severity: "normal" | "attention" };
@@ -24,8 +25,9 @@ type Item = { id: string; kind: string; title: string; detail: string; at: Date;
 export default async function AdminActivityPage() {
   const session = await getServerSession(authOptions);
   await connectDB();
-  const actor = session?.user.id ? await User.findById(session.user.id).select("role status").lean() : null;
+  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
   if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
+  if (actor.isDemo) return <DemoActivity/>;
   const [users, scans, signals, outcomes, orders, credits, checkouts, purchases, webhooks, emails, notifications, audits, exchangeEvents, running, unknownOrders, paymentReviews, livePaymentReviews, emailIssues] = await Promise.all([
     User.find().sort({ createdAt: -1 }).limit(12).select("email role isDemo createdAt").lean(),
     ScanRun.find().sort({ createdAt: -1 }).limit(20).select("symbol status outcome summary userId createdAt").lean(),

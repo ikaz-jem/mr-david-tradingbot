@@ -4,6 +4,8 @@ const scanRunSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
   requestId: { type: String, required: true },
   symbol: { type: String, required: true },
+  interval: { type: String, default: "4h" },
+  creditCost: { type: Number, default: 1 },
   status: { type: String, enum: ["running", "completed", "failed"], default: "running" },
   outcome: { type: String, enum: ["setup", "no_setup"], default: null },
   summary: { type: String, default: "" },

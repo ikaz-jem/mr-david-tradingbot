@@ -51,10 +51,11 @@ export async function POST(request: Request) {
     try {
       const authorization = await paystackLiveRequest<Authorization>("transaction/initialize", { method: "POST", body: { email: user.email, amount: String(amount), currency: config.currency, reference, callback_url: callbackUrl, metadata: JSON.stringify({ purchaseId: purchase.id, productId, kind }) } });
       if (authorization.reference !== reference || !authorization.authorization_url.startsWith("https://checkout.paystack.com/")) throw new Error("Invalid checkout response");
-      await BillingPurchase.updateOne({ _id: purchase._id }, { $set: { status: "pending" } });
+      await BillingPurchase.updateOne({ _id: purchase._id, status: "initializing" }, { $set: { status: "pending" } });
       return NextResponse.json({ url: authorization.authorization_url });
     } catch (error) {
-      await BillingPurchase.updateOne({ _id: purchase._id }, { $set: { status: "failed" } });
+      // A timeout is ambiguous: provider confirmation may still arrive.
+      await BillingPurchase.updateOne({ _id: purchase._id, status: "initializing" }, { $set: { status: "review" } });
       throw error;
     }
   } catch (error) { console.error("Live checkout failed", error); return NextResponse.json({ error: "Checkout is unavailable. No credits were added." }, { status: 503 }); }

@@ -17,6 +17,18 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   try {
     await connectDB();
+    if (session.user.isDemo) {
+      if (!await User.exists({ _id: session.user.id, isDemo: true, status: "active" })) return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
+      if (!(await getPlatformConfig(true)).paperReconciliationOpen) return NextResponse.json({ error: "Demo paper refresh is paused in admin controls." }, { status: 503 });
+      const samples = await Signal.find({ userId: session.user.id, modelVersion: "demo-scan-v1" }).sort({ createdAt: -1 }).limit(30).lean();
+      let updated = 0;
+      for (const signal of samples) {
+        const win = parseInt(String(signal._id).slice(-2), 16) % 3 !== 0;
+        const result = await PaperOutcome.updateOne({ signalId: signal._id }, { $setOnInsert: { userId: signal.userId, status: "closed", reason: win ? "target" : "stop", entryAt: signal.createdAt, exitAt: new Date(), exitPrice: win ? signal.target : signal.stop, netReturnPct: win ? 5.7 : -3.3, methodVersion: "demo-simulation-v1", feeRate: .001, slippageRate: .0005, checkedAt: new Date() } }, { upsert: true });
+        updated += result.upsertedCount;
+      }
+      return NextResponse.json({ updated, pending: 0, failures: [], message: updated ? `${updated} synthetic outcomes saved. No live market data was used.` : "All recent demo outcomes are up to date. Run a new scan to add another sample." });
+    }
     if (!(await getPlatformConfig()).paperReconciliationOpen) return NextResponse.json({ error: "Paper outcome refresh is temporarily paused by operations." }, { status: 503 });
     if (!await User.exists({ _id: session.user.id, status: "active" })) return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
     const signals = await Signal.find({ userId: session.user.id }).sort({ createdAt: -1 }).limit(30).lean();

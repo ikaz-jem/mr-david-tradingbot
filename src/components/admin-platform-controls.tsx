@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { scanSymbols } from "@/lib/scan-markets";
 
 type Config = {
   registrationOpen: boolean;
@@ -21,14 +22,14 @@ const gates: { field: keyof Pick<Config, "registrationOpen" | "scansOpen" | "exc
   { field: "contactIntakeOpen", title: "Contact form intake", detail: "Stop new support-form submissions. Direct email remains available." },
 ];
 
-const supportedPairs = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+const supportedPairs: readonly string[] = scanSymbols;
 
-export function AdminPlatformControls({ config }: { config: Config }) {
+export function AdminPlatformControls({ config, demo = false }: { config: Config; demo?: boolean }) {
   const router = useRouter();
   const [current, setCurrent] = useState(config);
   const [announcement, setAnnouncement] = useState(config.announcement);
   const [pairs, setPairs] = useState(config.allowedScanSymbols);
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(demo ? "Interactive demo configuration" : "");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -43,7 +44,7 @@ export function AdminPlatformControls({ config }: { config: Config }) {
       setAnnouncement(result.config.announcement);
       setPairs(result.config.allowedScanSymbols);
       setMessage(result.unchanged ? "This setting was already current." : "Setting saved and recorded in the audit trail.");
-      setReason(""); router.refresh();
+      setReason(demo ? "Interactive demo configuration" : ""); router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Change failed."); }
     finally { setPending(false); }
   }

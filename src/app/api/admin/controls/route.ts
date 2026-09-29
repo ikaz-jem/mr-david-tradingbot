@@ -8,11 +8,12 @@ import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { PlatformConfig } from "@/models/PlatformConfig";
 import { User } from "@/models/User";
 import { getPlatformConfig } from "@/lib/platform-config";
+import { scanSymbols } from "@/lib/scan-markets";
 
 export const runtime = "nodejs";
 const schema = z.object({
   field: z.enum(["registrationOpen", "scansOpen", "exchangeConnectionsOpen", "paperReconciliationOpen", "contactIntakeOpen", "allowedScanSymbols", "announcement"]),
-  value: z.union([z.boolean(), z.string().trim().max(180), z.array(z.enum(["BTCUSDT", "ETHUSDT", "SOLUSDT"])).min(1).max(3)]),
+  value: z.union([z.boolean(), z.string().trim().max(180), z.array(z.enum(scanSymbols)).min(1).max(scanSymbols.length)]),
   reason: z.string().trim().min(8).max(300),
 });
 
@@ -27,15 +28,16 @@ export async function POST(request: Request) {
   if ((field === "announcement" && typeof value !== "string") || (field === "allowedScanSymbols" && (!Array.isArray(value) || value.length === 0)) || (!["announcement", "allowedScanSymbols"].includes(field) && typeof value !== "boolean")) return NextResponse.json({ error: "Invalid value for this setting." }, { status: 400 });
   try {
     await connectDB();
-    const actor = await User.findById(session.user.id).select("role status").lean();
+    const actor = await User.findById(session.user.id).select("role status isDemo").lean();
     if (!actor || actor.role !== "admin" || actor.status !== "active") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    await PlatformConfig.updateOne({ key: "global" }, { $setOnInsert: { key: "global" } }, { upsert: true });
-    const current = await PlatformConfig.findOne({ key: "global" }).lean();
+    const key = actor.isDemo ? "demo" : "global";
+    await PlatformConfig.updateOne({ key }, { $setOnInsert: { key } }, { upsert: true });
+    const current = await PlatformConfig.findOne({ key }).lean();
     if (!current) throw new Error("Platform configuration missing");
-    const normalized = await getPlatformConfig();
+    const normalized = await getPlatformConfig(Boolean(actor.isDemo));
     const before = normalized[field];
     if (JSON.stringify(before) === JSON.stringify(value)) return NextResponse.json({ ok: true, unchanged: true, config: normalized });
-    const audit = await AdminAuditEvent.create({ actorId: actor._id, targetType: "platform", targetId: "global", action: `set_${field}`, before: JSON.stringify(before), after: JSON.stringify(value), reason });
+    const audit = await AdminAuditEvent.create({ actorId: actor._id, targetType: "platform", targetId: key, action: `set_${field}`, before: JSON.stringify(before), after: JSON.stringify(value), reason });
     let applied = false;
     try {
       const updated = await PlatformConfig.updateOne({ _id: current._id, updatedAt: current.updatedAt }, { $set: { [field]: value } });
@@ -45,7 +47,7 @@ export async function POST(request: Request) {
       }
       applied = true;
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "applied" } });
-      return NextResponse.json({ ok: true, config: await getPlatformConfig() });
+      return NextResponse.json({ ok: true, config: await getPlatformConfig(Boolean(actor.isDemo)) });
     } catch (error) {
       if (!applied) await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } }).catch(() => undefined);
       throw error;
