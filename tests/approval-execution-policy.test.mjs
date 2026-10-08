@@ -7,3 +7,8 @@ test("allows only an explicitly confirmed owner with Spot execution access", () 
 test("denies demo, cross-owner, read-only and unconfirmed execution", () => {
   for (const changed of [{ isDemo: true }, { ownsUnlock: false }, { connectionAccess: "read_only" }, { explicitlyConfirmed: false }]) assert.equal(approvalExecutionAccess({ ...ready, ...changed }).allowed, false);
 });
+test("Futures execution requires a separately scoped Futures connection", () => {
+  const context = { ...ready, requestedMarket: "futures", connectionAccess: "futures_trade" };
+  assert.equal(approvalExecutionAccess(context).allowed, true);
+  assert.equal(approvalExecutionAccess({ ...context, connectionAccess: "spot_trade" }).allowed, false);
+});
