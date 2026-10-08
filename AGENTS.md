@@ -7,3 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Mandatory authorization review
+
+Every new feature and code change must explicitly determine whether authentication, authorization, tenant isolation, ownership checks, permission-gated UI, audit logging, or sensitive-operation rate limiting apply. Follow `.cursor/rules/authorization-review.mdc`. Protected operations are deny-by-default and must be enforced server-side through centralized authorization helpers; frontend visibility is never a security boundary.

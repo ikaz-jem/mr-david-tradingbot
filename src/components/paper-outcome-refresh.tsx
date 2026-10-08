@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { LoaderCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function PaperOutcomeRefresh() {
+export function PaperOutcomeRefresh({ available = true, unavailableMessage = "Paper reconciliation is paused." }: { available?: boolean; unavailableMessage?: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -20,5 +20,5 @@ export function PaperOutcomeRefresh() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Paper outcomes unavailable"); }
     finally { setPending(false); }
   }
-  return <div className="flex flex-wrap items-center gap-3"><Button onClick={refresh} disabled={pending} className="button-secondary h-10 rounded-xl px-4 text-sm font-bold">{pending ? <LoaderCircle className="mr-2 size-4 animate-spin"/> : <RotateCw className="mr-2 size-4"/>}Refresh paper outcomes</Button>{message && <span role="status" className="text-xs text-muted">{message}</span>}</div>;
+  return <div className="flex flex-wrap items-center gap-3"><Button onClick={refresh} disabled={pending || !available} title={!available ? unavailableMessage : undefined} className="button-secondary h-10 rounded-xl px-4 text-sm font-bold disabled:opacity-40">{pending ? <LoaderCircle className="mr-2 size-4 animate-spin"/> : <RotateCw className="mr-2 size-4"/>}{available ? "Refresh paper outcomes" : "Outcome refresh paused"}</Button>{message && <span role="status" className="text-xs text-muted">{message}</span>}</div>;
 }

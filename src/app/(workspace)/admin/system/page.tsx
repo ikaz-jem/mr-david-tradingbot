@@ -11,46 +11,43 @@ import { getPlatformConfig } from "@/lib/platform-config";
 import { getServiceConfigStatus } from "@/lib/service-config";
 import { PageIntro, SectionHeader } from "@/components/dashboard-ui";
 import { exchangeEncryptionReady } from "@/lib/exchange-credentials";
-import { ProductAccount } from "@/models/ProductAccount";
-import { liveBillingConfig } from "@/lib/billing-catalog";
-import { getServerSession } from "next-auth";
+import { getGateway, gatewayReady } from "@/lib/payment-gateways";
 import { notFound } from "next/navigation";
-import { authOptions } from "@/lib/auth";
+import { workspaceActor } from "@/lib/workspace-access";
 import { DemoSystemHealth } from "@/components/demo-system-health";
 
 export const dynamic = "force-dynamic";
 
 export default async function SystemPage() {
   await connectDB();
-  const session = await getServerSession(authOptions);
-  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
-  if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
+  const actor = await workspaceActor();
+  if (!actor?.can("settings:read")) notFound();
   if (actor.isDemo) return <DemoSystemHealth/>;
-  const users = await User.find().sort({ createdAt: -1 }).limit(100).select("creditBalance").lean();
-  const [ledger, accounts, staleJobs, sentEmails, emailFailures, paystackCheckouts, paystackReviews, liveReviews, controls, servicesStatus] = await Promise.all([
+  const users = await User.find({ isDemo: { $ne: true } }).sort({ createdAt: -1 }).limit(100).select("creditBalance").lean();
+  const demoIds = (await User.find({ isDemo: true }).select("_id").lean()).map(user => user._id);
+  const [ledger, staleJobs, sentEmails, emailFailures, paystackCheckouts, paystackReviews, liveReviews, controls, servicesStatus] = await Promise.all([
     CreditEntry.aggregate<{ _id: string; balance: number }>([
       { $match: { userId: { $in: users.map(user => user._id) } } },
       { $group: { _id: "$userId", balance: { $sum: "$amount" } } },
     ]),
-    ProductAccount.find({ userId: { $in: users.map(user => user._id) }, productId: "signals" }).select("userId creditBalance").lean(),
-    ScanRun.countDocuments({ status: "running", $expr: { $lt: ["$createdAt", { $dateSubtract: { startDate: "$$NOW", unit: "minute", amount: 1 } }] } }),
+    ScanRun.countDocuments({ userId: { $nin: demoIds }, status: "running", $expr: { $lt: ["$createdAt", { $dateSubtract: { startDate: "$$NOW", unit: "minute", amount: 1 } }] } }),
     EmailDelivery.countDocuments(),
     EmailDelivery.countDocuments({ status: { $in: ["failed", "bounced", "complained"] } }),
     PaystackCheckout.countDocuments(),
     PaystackWebhookEvent.countDocuments({ outcome: "review" }),
-    BillingPurchase.countDocuments({ status: "review" }),
+    BillingPurchase.countDocuments({ isDemo: { $ne: true }, status: "review" }),
     getPlatformConfig(),
     getServiceConfigStatus(),
   ]);
   const ledgerByUser = new Map(ledger.map(row => [String(row._id), row.balance]));
-  const accountByUser = new Map(accounts.map(account => [String(account.userId), account.creditBalance]));
-  const mismatches = users.filter(user => (accountByUser.get(String(user._id)) ?? user.creditBalance ?? 5) !== (ledgerByUser.get(String(user._id)) ?? 0)).length;
+  const gateways = await Promise.all([getGateway("paystack", false), getGateway("nowpayments", false)]);
+  const mismatches = users.filter(user => (user.creditBalance ?? 0) !== (ledgerByUser.get(String(user._id)) ?? 0)).length;
   const services = [
     { name: "MongoDB", detail: "Product database connected", ready: true, icon: Database },
     { name: "Market feed", detail: "Public Binance URL configured; no live probe here", ready: Boolean(process.env.BINANCE_DATA_BASE_URL), icon: Activity },
     { name: "AI provider", detail: "Key and model required before scans can run", ready: Boolean(servicesStatus.openaiApiKey && servicesStatus.openaiModel), icon: Server },
     { name: "Resend email", detail: "Verified sender and API key required for account email", ready: Boolean(servicesStatus.resendApiKey && servicesStatus.resendFromEmail && process.env.APP_URL), icon: Server },
-    { name: "Payment checkout", detail: "Live Paystack requires written merchant approval, country scope, confirmed webhook, approved prices, and an HTTPS origin", ready: Boolean(liveBillingConfig()), icon: WalletCards },
+    ...gateways.map(gateway => ({ name: gateway.provider === "paystack" ? "Paystack checkout" : "USDT BEP20 checkout", detail: "Manage credentials and availability in Platform controls / Payments. Configuration is not a live connectivity check.", ready: gateway.enabled && gatewayReady(gateway), icon: WalletCards })),
     { name: "Read-only exchange connections", detail: "Binance Spot key verification and encrypted storage; no orders", ready: exchangeEncryptionReady(), icon: KeyRound },
     { name: "Exchange order service", detail: "Order permissions, approval controls, and reconciliation pending", ready: false, icon: KeyRound },
   ];

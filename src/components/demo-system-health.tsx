@@ -24,7 +24,7 @@ export async function DemoSystemHealth() {
     { name: "Research scanner", detail: controls.scansOpen ? "Demo scanning is active" : "Paused in Platform controls", ready: controls.scansOpen, icon: Activity },
     { name: "AI configuration", detail: services.openaiApiKey && services.openaiModel ? "Demo provider settings saved" : "Add demo provider settings in Platform controls", ready: Boolean(services.openaiApiKey && services.openaiModel), icon: Server },
     { name: "Email outbox", detail: emails + " simulated messages recorded", ready: true, icon: Server },
-    { name: "Billing", detail: workspaces.length + " demo memberships available", ready: workspaces.length > 0, icon: WalletCards },
+    { name: "Billing", detail: workspaces.length + " demo activation workspaces available", ready: workspaces.length > 0, icon: WalletCards },
     { name: "Exchange connections", detail: "Simulated Binance, Coinbase, Kraken, and OKX connections", ready: controls.exchangeConnectionsOpen, icon: KeyRound },
   ];
   const invalidWallets = workspaces.filter(workspace => {

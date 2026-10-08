@@ -38,7 +38,7 @@ async function load(category: Category, ids: Types.ObjectId[], names: Map<string
   if (category === "users") return { title: "Users", columns: ["Email", "Name", "Role", "Status", "Country", "Created"], rows: users.map(user => [user.email, user.name, user.role, user.status, user.countryCode || "—", date(user.createdAt)]) };
   if (category === "products") {
     const records = await ProductDefinition.find({ scope: "demo" }).sort({ createdAt: 1 }).lean();
-    return { title: "Products", columns: ["ID", "Name", "Enabled", "Cost", "Starter", "Trader", "Desk", "Top-up"], rows: records.map(row => [row.slug, row.name, row.enabled ? "Yes" : "No", value(row.cost), value(row.starter), value(row.trader), value(row.desk), row.topupCredits + " / $" + row.topupPrice]) };
+    return { title: "Products", columns: ["ID", "Name", "Enabled", "Credits / action", "Revision"], rows: records.map(row => [row.slug, row.name, row.enabled ? "Yes" : "No", value(row.cost), value(row.revision)]) };
   }
   if (category === "scans") {
     const records = await ScanRun.find({ userId: { $in: ids } }).sort({ createdAt: -1 }).limit(500).lean();
@@ -58,7 +58,7 @@ async function load(category: Category, ids: Types.ObjectId[], names: Map<string
   }
   if (category === "connections") return { title: "Exchange connections", columns: ["Customer", "Provider", "Label", "Connected"], rows: workspaces.flatMap(workspace => workspace.connections.map(row => [names.get(String(workspace.userId)) || "Demo user", row.provider || "—", row.label || "Spot account", date(row.connectedAt)])) };
   if (category === "credits") return { title: "Credit ledger", columns: ["Customer", "Product", "Amount", "Note", "Created"], rows: workspaces.flatMap(workspace => workspace.activity.map(row => [names.get(String(workspace.userId)) || "Demo user", row.productId || "—", value(row.amount), row.note || "—", date(row.createdAt)])) };
-  if (category === "billing") return { title: "Billing purchases", columns: ["Customer", "Kind", "Item", "Amount", "Credits", "Created"], rows: workspaces.flatMap(workspace => workspace.receipts.filter(row => ["monthly", "topup"].includes(row.kind || "")).map(row => [names.get(String(workspace.userId)) || "Demo user", row.kind || "—", row.itemId || row.productId || "—", "$" + value(row.amount), value(row.credits), date(row.createdAt)])) };
+  if (category === "billing") return { title: "Billing purchases", columns: ["Customer", "Kind", "Item", "Amount", "Credits", "Created"], rows: workspaces.flatMap(workspace => workspace.receipts.filter(row => ["activation", "topup"].includes(row.kind || "")).map(row => [names.get(String(workspace.userId)) || "Demo user", row.kind || "—", row.itemId || row.productId || "—", "$" + value(row.amount), value(row.credits), date(row.createdAt)])) };
   if (category === "notifications") {
     const records = await Notification.find({ userId: { $in: ids } }).sort({ createdAt: -1 }).limit(500).lean();
     return { title: "Notifications", columns: ["Customer", "Kind", "Title", "Read", "Created"], rows: records.map(row => [names.get(String(row.userId)) || "Demo user", row.kind, row.title, row.readAt ? "Yes" : "No", date(row.createdAt)]) };

@@ -62,9 +62,9 @@ button { cursor: pointer; }
 .marketing-pages main:not(.marketing-home) .surface { border-color: #3c5136; background: linear-gradient(145deg,#19271a,#101a12 75%); box-shadow: inset 0 1px #baff3510; }
 .marketing-pages main:not(.marketing-home) .surface:hover { border-color: #638944; }
 .workspace-experience > div { background: radial-gradient(ellipse at 65% 0%,#668e2320,transparent 32%),#0a100d; }
-.workspace-experience aside { position: sticky; top: 0; height: 100dvh; border-color: #334831; background: linear-gradient(180deg,#101c12,#0b140d); z-index: 40; }
-.workspace-experience aside .app-scrollbar { min-height: 0; }
-.workspace-experience header { position: sticky; top: 0; z-index: 30; border-color: #3a5134; background: #0d180fed; backdrop-filter: blur(18px); box-shadow: 0 12px 30px #01050166; }
+.workspace-experience > div > aside { position: sticky; top: 0; height: 100dvh; border-color: #334831; background: linear-gradient(180deg,#101c12,#0b140d); z-index: 40; }
+.workspace-experience > div > aside .app-scrollbar { min-height: 0; }
+.workspace-experience > div > div > header { position: sticky; top: 0; z-index: 30; border-color: #3a5134; background: #0d180fed; backdrop-filter: blur(18px); box-shadow: 0 12px 30px #01050166; }
 .workspace-experience nav[aria-label="Mobile workspace navigation"] { position: sticky; top: 80px; z-index: 29; border-color: #3a5134; background: #0d180ff2; backdrop-filter: blur(18px); }
 .workspace-experience nav[aria-label="Mobile workspace navigation"] a[href^="/admin"] { order: -1; }
 .workspace-experience .surface { border-color: #354b33; background: linear-gradient(150deg,#152217,#101a12 72%); box-shadow: inset 0 1px #c5ff410c,0 18px 45px #01060120; }
@@ -77,6 +77,9 @@ button { cursor: pointer; }
 .workspace-experience table tbody tr:hover { background: #c5ff4108; }
 .workspace-experience input:focus-visible,.workspace-experience select:focus-visible,.workspace-experience textarea:focus-visible,.auth-shell input:focus-visible,.marketing-pages input:focus-visible,.marketing-pages textarea:focus-visible { outline: 2px solid #a9e250; outline-offset: 2px; }
 .workspace-experience button:focus-visible,.workspace-experience a:focus-visible,.site-header a:focus-visible,.site-header summary:focus-visible { outline: 2px solid #c5ff41; outline-offset: 3px; }
+.workspace-compact table th,.workspace-compact table td { padding-top: .65rem!important; padding-bottom: .65rem!important; }
+.workspace-compact .surface { --compact-density: .88; }
+.workspace-reduced-motion *,.workspace-reduced-motion *::before,.workspace-reduced-motion *::after { scroll-behavior: auto!important; animation-duration: .01ms!important; animation-iteration-count: 1!important; transition-duration: .01ms!important; }
 .marketing-pages main:not(.marketing-home) details[open] { border-color: #638944; }
 .workspace-intro { background: linear-gradient(110deg,#102115e8 0%,#193018e8 53%,#0b1c0edb 100%),url('/aurora-landscape.webp') center 48% / cover; box-shadow: inset 0 1px #c5ff4130,0 22px 60px #0005; }
 .workspace-intro-orbit { box-shadow: 0 0 0 50px #baff2407,0 0 0 95px #baff2405,inset 0 0 40px #baff2415; }

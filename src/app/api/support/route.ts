@@ -3,19 +3,26 @@ import { z } from "zod";
 import { workspaceActor } from "@/lib/workspace-access";
 import { isSameOrigin } from "@/lib/request-origin";
 import { SupportTicket } from "@/models/SupportTicket";
+import { getPlatformConfig } from "@/lib/platform-config";
 
 const input = z.object({ subject: z.string().trim().min(5).max(160), category: z.enum(["account", "billing", "research", "exchange", "other"]), body: z.string().trim().min(10).max(4000) });
 export async function GET(request: Request) {
   const actor = await workspaceActor();
   if (!actor) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  const staff = new URL(request.url).searchParams.get("view") === "staff" && actor.role !== "user";
+  const operations = await getPlatformConfig(actor.isDemo);
+  const staffRequested = new URL(request.url).searchParams.get("view") === "staff";
+  if (staffRequested && (actor.organizationKind !== "platform" || !actor.can("support:read"))) return NextResponse.json({ error: "Support read permission required." }, { status: 403 });
+  const staff = staffRequested;
   const tickets = await SupportTicket.find({ isDemo: actor.isDemo, ...(staff ? {} : { userId: actor.id }) }).sort({ updatedAt: -1 }).limit(100).lean();
-  return NextResponse.json({ tickets: tickets.map(ticket => ({ ...ticket, messages: ticket.messages.filter(message => staff || !message.internal) })), actorId: actor.id });
+  return NextResponse.json({ tickets: tickets.map(ticket => ({ ...ticket, messages: ticket.messages.filter(message => staff || !message.internal) })), actorId: actor.id, creationOpen: staff || (!operations.maintenanceMode && operations.supportOpen), operationsMessage: operations.maintenanceMode ? operations.maintenanceMessage : operations.supportPausedMessage });
 }
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid origin." }, { status: 403 });
   const actor = await workspaceActor();
   if (!actor) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  const operations = await getPlatformConfig(actor.isDemo);
+  if (actor.role === "user" && operations.maintenanceMode) return NextResponse.json({ error: operations.maintenanceMessage }, { status: 503 });
+  if (actor.role === "user" && !operations.supportOpen) return NextResponse.json({ error: operations.supportPausedMessage }, { status: 503 });
   const parsed = input.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Add a subject (5–160 characters) and message (10–4,000 characters)." }, { status: 400 });
   const recent = await SupportTicket.countDocuments({ userId: actor.id, createdAt: { $gt: new Date(Date.now() - 3600000) } });

@@ -3,6 +3,8 @@ const schema = new Schema({
   userId: { type: Schema.Types.ObjectId, required: true, unique: true },
   planId: { type: String, enum: ["starter", "trader", "desk"], default: "trader" },
   periodEnd: { type: Date, required: true },
+  activatedAt: { type: Date, default: null },
+  creditBalance: { type: Number, default: 0, min: 0 },
   wallets: { type: Map, of: Number, default: {} },
   revision: { type: Number, default: 0 },
   passwordHash: { type: String, select: false },

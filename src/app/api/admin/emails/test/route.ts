@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { workspaceActor } from "@/lib/workspace-access";
 import { connectDB } from "@/lib/db";
 import { hasEmailProvider, sendEmail } from "@/lib/email";
 import { isSameOrigin } from "@/lib/request-origin";
@@ -12,17 +11,17 @@ import { DemoEmail } from "@/models/DemoEmail";
 
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  const current = await workspaceActor();
+  if (!current?.can("emails:update") || current.organizationKind !== "platform") return NextResponse.json({ error: "Email update permission required." }, { status: 403 });
   try {
     await connectDB();
-    const demo = await User.findOne({ _id: session.user.id, role: "admin", status: "active", isDemo: true }).select("email").lean();
+    const demo = current.isDemo ? await User.findOne({ _id: current.id, isDemo: true }).select("email").lean() : null;
     if (demo) {
       await DemoEmail.create({ actorId: demo._id, recipient: demo.email, subject: "Enrivea Signal demo delivery test" });
       return NextResponse.json({ ok: true, simulated: true });
     }
-    const actor = await User.findOne({ _id: session.user.id, role: "admin", status: "active", isDemo: false, emailVerifiedAt: { $ne: null } }).select("email").lean();
-    if (!actor) return NextResponse.json({ error: "Verified real admin account required." }, { status: 403 });
+    const actor = await User.findOne({ _id: current.id, isDemo: false, emailVerifiedAt: { $ne: null } }).select("email").lean();
+    if (!actor) return NextResponse.json({ error: "Verified real operator account required." }, { status: 403 });
     if (!await hasEmailProvider()) return NextResponse.json({ error: "Resend is not configured." }, { status: 503 });
     const recent = await EmailDelivery.exists({ recipient: actor.email, category: "admin_test", createdAt: { $gt: new Date(Date.now() - 10 * 60_000) } });
     if (recent) return NextResponse.json({ error: "Please wait 10 minutes before another test email." }, { status: 429 });

@@ -15,20 +15,22 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Check the form and include a message of at least 20 characters." }, { status: 400 });
   if (parsed.data.website) return NextResponse.json({ ok: true });
-  const service = await getServiceConfig();
-  if (!await hasEmailProvider() || !service.resendSupportEmail) return NextResponse.json({ error: "The contact form is unavailable. Email contact@enrivea.com directly." }, { status: 503 });
   const normalizedEmail = parsed.data.email.toLowerCase();
   const bucket = Math.floor(Date.now() / 600_000);
   const key = createHmac("sha256", process.env.NEXTAUTH_SECRET!).update(`contact:${normalizedEmail}:${bucket}`).digest("hex");
   try {
     await connectDB();
-    if (!(await getPlatformConfig()).contactIntakeOpen) return NextResponse.json({ error: "Contact intake is temporarily paused. Please email contact@enrivea.com directly." }, { status: 503 });
+    const platform = await getPlatformConfig();
+    if (platform.maintenanceMode) return NextResponse.json({ error: platform.maintenanceMessage }, { status: 503 });
+    if (!platform.contactIntakeOpen) return NextResponse.json({ error: platform.contactIntakePausedMessage }, { status: 503 });
     await ContactThrottle.create({ key, expiresAt: new Date((bucket + 1) * 600_000 + 60_000) });
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === 11000) return NextResponse.json({ error: "Please wait a few minutes before sending another message." }, { status: 429 });
     console.error("Contact throttle unavailable", error);
     return NextResponse.json({ error: "The contact form is unavailable right now." }, { status: 503 });
   }
+  const service = await getServiceConfig();
+  if (!await hasEmailProvider() || !service.resendSupportEmail) return NextResponse.json({ error: "The contact form is unavailable. Email contact@enrivea.com directly." }, { status: 503 });
   const safeName = escapeEmailHtml(parsed.data.name);
   const safeEmail = escapeEmailHtml(normalizedEmail);
   const safeMessage = escapeEmailHtml(parsed.data.message).replace(/\n/g, "<br>");

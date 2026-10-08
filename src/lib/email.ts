@@ -24,14 +24,29 @@ export function passwordResetEmail(name: string, url: string) {
   return { subject: "Reset your Enrivea Signal password", html: frame("Reset your password", `<p style="color:#cbd9ca;line-height:1.7">Hi ${safeName}, use this link to set a new password.</p><p style="margin:28px 0"><a href="${safeUrl}" style="display:inline-block;background:#c5ff41;color:#101810;padding:14px 19px;border-radius:10px;font-weight:800;text-decoration:none">Reset password</a></p><p style="color:#9ead9d;font-size:13px;line-height:1.6">This link expires in 30 minutes. If you did not request it, your password has not changed. Link: ${safeUrl}</p>`), text: `Hi ${name}, reset your Enrivea Signal password within 30 minutes: ${url}` };
 }
 
+export function staffInvitationEmail(name: string, organization: string, url: string) {
+  const safeName = escapeEmailHtml(name);
+  const safeOrganization = escapeEmailHtml(organization);
+  const safeUrl = escapeEmailHtml(url);
+  return { subject: `You were invited to ${organization} · Enrivea Signal`, html: frame("Accept your staff invitation", `<p style="color:#cbd9ca;line-height:1.7">Hi ${safeName}, you were invited to join ${safeOrganization}. Set a secure password to activate your staff account.</p><p style="margin:28px 0"><a href="${safeUrl}" style="display:inline-block;background:#c5ff41;color:#101810;padding:14px 19px;border-radius:10px;font-weight:800;text-decoration:none">Accept invitation</a></p><p style="color:#9ead9d;font-size:13px;line-height:1.6">This single-use link expires in 48 hours. Link: ${safeUrl}</p>`), text: `Hi ${name}, you were invited to join ${organization}. Set your password within 48 hours: ${url}` };
+}
+
 export function welcomeEmail(name: string) {
   const safeName = escapeEmailHtml(name);
-  return { subject: "Your Enrivea Signal workspace is ready", html: frame("Welcome to clearer research", `<p style="color:#cbd9ca;line-height:1.7">Hi ${safeName}, your workspace is ready. Start by exploring the research desk and your five welcome analysis credits.</p><p style="color:#9ead9d;font-size:13px;line-height:1.6">Exchange execution and paid access remain disabled during this preview.</p>`), text: `Hi ${name}, your Enrivea Signal workspace is ready. You have five welcome analysis credits.` };
+  return { subject: "Your Enrivea Signal workspace is ready", html: frame("Welcome to clearer research", `<p style="color:#cbd9ca;line-height:1.7">Hi ${safeName}, your workspace is ready. Activate your account once to unlock the platform and receive your included credits.</p><p style="color:#9ead9d;font-size:13px;line-height:1.6">Credits are shared across available Enrivea products. Crypto research is not investment advice.</p>`), text: `Hi ${name}, your Enrivea Signal workspace is ready. Activate your account once to unlock the platform and receive your included credits.` };
 }
 
 export function passwordChangedEmail(name: string) {
   const safeName = escapeEmailHtml(name);
   return { subject: "Your Enrivea Signal password changed", html: frame("Password updated", `<p style="color:#cbd9ca;line-height:1.7">Hi ${safeName}, the password for your Enrivea Signal account was changed. Existing sessions have been invalidated. If this was not you, contact us immediately at contact@enrivea.com.</p>`), text: `Hi ${name}, your Enrivea Signal password was changed. Existing sessions have been invalidated. If this was not you, contact contact@enrivea.com immediately.` };
+}
+
+export function accountEventEmail(name: string, title: string, message: string, actionUrl?: string) {
+  const safeName = escapeEmailHtml(name);
+  const safeTitle = escapeEmailHtml(title);
+  const safeMessage = escapeEmailHtml(message);
+  const action = actionUrl ? `<p style="margin:28px 0"><a href="${escapeEmailHtml(actionUrl)}" style="display:inline-block;background:#c5ff41;color:#101810;padding:14px 19px;border-radius:10px;font-weight:800;text-decoration:none">Open workspace</a></p>` : "";
+  return { subject: `${title} · Enrivea Signal`, html: frame(safeTitle, `<p style="color:#cbd9ca;line-height:1.7">Hi ${safeName}, ${safeMessage}</p>${action}`), text: `Hi ${name}, ${message}${actionUrl ? ` Open: ${actionUrl}` : ""}` };
 }
 
 export async function sendEmail(input: { to: string; category: string; eventKey: string; subject: string; html: string; text: string; replyTo?: string }) {

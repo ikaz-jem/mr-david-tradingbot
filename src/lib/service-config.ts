@@ -15,7 +15,7 @@ function encryptionKey() {
 
 export function serviceEncryptionReady() { try { encryptionKey(); return true; } catch { return false; } }
 
-export function encryptServiceSecret(value: string, field: SecretField) {
+export function encryptServiceSecret(value: string, field: SecretField | "paymentApiKey" | "paymentWebhookSecret") {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   cipher.setAAD(Buffer.from(`service-config:${field}`));
@@ -23,7 +23,7 @@ export function encryptServiceSecret(value: string, field: SecretField) {
   return `v1:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${ciphertext.toString("base64url")}`;
 }
 
-export function decryptServiceSecret(value: string, field: SecretField) {
+export function decryptServiceSecret(value: string, field: SecretField | "paymentApiKey" | "paymentWebhookSecret") {
   const [version, iv, tag, ciphertext] = value.split(":");
   if (version !== "v1" || !iv || !tag || !ciphertext) throw new Error("Stored service credential has an invalid format");
   const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64url"));
@@ -32,16 +32,19 @@ export function decryptServiceSecret(value: string, field: SecretField) {
   return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
 }
 
-export async function getServiceConfig() {
+export async function getServiceConfig(isDemo = false) {
   await connectDB();
-  const stored = await ServiceConfig.findOne({ key: "global" }).lean();
+  const stored = await ServiceConfig.findOne({ key: isDemo ? "demo" : "global" }).lean();
   return {
-    openaiApiKey: stored?.openaiApiKeyEncrypted ? decryptServiceSecret(stored.openaiApiKeyEncrypted, "openaiApiKey") : process.env.OPENAI_API_KEY ?? "",
-    openaiModel: stored?.openaiModel || process.env.OPENAI_MODEL || "",
-    resendApiKey: stored?.resendApiKeyEncrypted ? decryptServiceSecret(stored.resendApiKeyEncrypted, "resendApiKey") : process.env.RESEND_API_KEY ?? "",
-    resendFromEmail: stored?.resendFromEmail || process.env.RESEND_FROM_EMAIL || "",
-    resendSupportEmail: stored?.resendSupportEmail || process.env.RESEND_SUPPORT_EMAIL || "",
-    resendWebhookSecret: stored?.resendWebhookSecretEncrypted ? decryptServiceSecret(stored.resendWebhookSecretEncrypted, "resendWebhookSecret") : process.env.RESEND_WEBHOOK_SECRET ?? "",
+    scope: isDemo ? "demo" as const : "global" as const,
+    openaiApiKey: stored?.openaiApiKeyEncrypted ? decryptServiceSecret(stored.openaiApiKeyEncrypted, "openaiApiKey") : (isDemo ? "" : process.env.OPENAI_API_KEY) ?? "",
+    openaiModel: stored?.openaiModel || (isDemo ? "" : process.env.OPENAI_MODEL) || "",
+    openaiVerifiedAt: stored?.openaiVerifiedAt?.toISOString() ?? null,
+    openaiLastError: stored?.openaiLastError ?? "",
+    resendApiKey: stored?.resendApiKeyEncrypted ? decryptServiceSecret(stored.resendApiKeyEncrypted, "resendApiKey") : (isDemo ? "" : process.env.RESEND_API_KEY) ?? "",
+    resendFromEmail: stored?.resendFromEmail || (isDemo ? "" : process.env.RESEND_FROM_EMAIL) || "",
+    resendSupportEmail: stored?.resendSupportEmail || (isDemo ? "" : process.env.RESEND_SUPPORT_EMAIL) || "",
+    resendWebhookSecret: stored?.resendWebhookSecretEncrypted ? decryptServiceSecret(stored.resendWebhookSecretEncrypted, "resendWebhookSecret") : (isDemo ? "" : process.env.RESEND_WEBHOOK_SECRET) ?? "",
   };
 }
 
@@ -51,6 +54,8 @@ export async function getServiceConfigStatus(isDemo = false) {
   const configured = {
     openaiApiKey: Boolean(stored?.openaiApiKeyEncrypted || (isDemo ? "" : process.env.OPENAI_API_KEY)),
     openaiModel: stored?.openaiModel || (isDemo ? "" : process.env.OPENAI_MODEL) || "",
+    openaiVerifiedAt: stored?.openaiVerifiedAt?.toISOString() ?? null,
+    openaiLastError: stored?.openaiLastError ?? "",
     resendApiKey: Boolean(stored?.resendApiKeyEncrypted || (isDemo ? "" : process.env.RESEND_API_KEY)),
     resendFromEmail: stored?.resendFromEmail || (isDemo ? "" : process.env.RESEND_FROM_EMAIL) || "",
     resendSupportEmail: stored?.resendSupportEmail || (isDemo ? "" : process.env.RESEND_SUPPORT_EMAIL) || "",
@@ -64,4 +69,9 @@ export async function getServiceConfigStatus(isDemo = false) {
     resendSupportEmail: stored?.resendSupportEmail ? "dashboard" : (isDemo ? "" : process.env.RESEND_SUPPORT_EMAIL) ? "deployment" : "unset",
     resendWebhookSecret: stored?.resendWebhookSecretEncrypted ? "dashboard" : (isDemo ? "" : process.env.RESEND_WEBHOOK_SECRET) ? "deployment" : "unset",
   } };
+}
+
+export async function recordOpenAIHealth(key: "global" | "demo", error = "") {
+  await connectDB();
+  await ServiceConfig.updateOne({ key }, { $set: { openaiVerifiedAt: error ? null : new Date(), openaiLastError: error.slice(0, 240) }, $setOnInsert: { key } }, { upsert: true });
 }

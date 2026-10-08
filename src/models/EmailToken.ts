@@ -3,7 +3,7 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 const emailTokenSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
   tokenHash: { type: String, required: true, unique: true },
-  kind: { type: String, enum: ["verify", "reset"], required: true },
+  kind: { type: String, enum: ["verify", "reset", "invite"], required: true },
   expiresAt: { type: Date, required: true },
 }, { timestamps: true });
 

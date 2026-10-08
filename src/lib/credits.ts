@@ -1,32 +1,42 @@
 import mongoose from "mongoose";
 import { CreditEntry } from "@/models/CreditEntry";
 import { User } from "@/models/User";
-import { ProductAccount } from "@/models/ProductAccount";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 
-export const SIGNALS_PRODUCT_ID = "signals";
+export const PLATFORM_CREDIT_ID = "platform";
 
-export async function ensureProductAccount(userId: string, productId = SIGNALS_PRODUCT_ID) {
-  const owner = await User.findById(userId).select("creditBalance").lean();
-  if (!owner) throw new Error("Account unavailable");
-  await ProductAccount.updateOne({ userId, productId }, { $setOnInsert: { userId, productId, creditBalance: productId === SIGNALS_PRODUCT_ID ? owner.creditBalance : 0 } }, { upsert: true });
-  return ProductAccount.findOne({ userId, productId });
-}
-
-export function productAccessActive(account: { subscriptionStatus: string; currentPeriodEnd?: Date | null }) {
-  // Existing welcome credits remain usable until a paid subscription starts. Once a
-  // subscription has existed, expiry blocks usage even if top-up credits remain.
-  return account.subscriptionStatus === "none" || (account.subscriptionStatus === "active" && Boolean(account.currentPeriodEnd && account.currentPeriodEnd > new Date()));
-}
-
-export async function ensureWelcomeCredits(userId: string) {
-  const sourceKey = `welcome:${userId}`;
-  await CreditEntry.updateOne({ sourceKey }, { $setOnInsert: { userId: new mongoose.Types.ObjectId(userId), amount: 5, kind: "welcome", sourceKey, note: "Welcome analyses" } }, { upsert: true });
+export async function getAccountCreditState(userId: string) {
+  const user = await User.findById(userId).select("creditBalance activatedAt isDemo").lean();
+  if (!user) throw new Error("Account unavailable");
+  if (user.isDemo) {
+    const workspace = await ensureDemoWorkspace(userId);
+    return { balance: workspace?.creditBalance ?? 0, activated: Boolean(workspace?.activatedAt) };
+  }
+  return { balance: user.creditBalance, activated: Boolean(user.activatedAt) };
 }
 
 export async function getCreditBalance(userId: string) {
-  if (await User.exists({ _id: userId, isDemo: true })) return (await ensureDemoWorkspace(userId))?.wallets.get("signals") ?? 0;
-  await ensureWelcomeCredits(userId);
-  const account = await ensureProductAccount(userId);
-  return account?.creditBalance ?? 0;
+  return (await getAccountCreditState(userId)).balance;
+}
+
+export async function activateAccount(userId: mongoose.Types.ObjectId, credits: number, reference: string, session: mongoose.ClientSession) {
+  const user = await User.findOneAndUpdate(
+    { _id: userId, status: "active", isDemo: false, activatedAt: null },
+    { $set: { activatedAt: new Date(), activationReference: reference }, $inc: { creditBalance: credits } },
+    { new: true, session },
+  );
+  if (!user) throw new Error("Account is already activated or unavailable");
+  await CreditEntry.create([{ userId, productId: PLATFORM_CREDIT_ID, amount: credits, kind: "purchase", sourceKey: `activation:${reference}`, note: "Account activation credit grant" }], { session });
+  return user;
+}
+
+export async function addPurchasedCredits(userId: mongoose.Types.ObjectId, credits: number, reference: string, label: string, session: mongoose.ClientSession) {
+  const user = await User.findOneAndUpdate(
+    { _id: userId, status: "active", isDemo: false, activatedAt: { $ne: null } },
+    { $inc: { creditBalance: credits } },
+    { new: true, session },
+  );
+  if (!user) throw new Error("Activate the account before adding credits");
+  await CreditEntry.create([{ userId, productId: PLATFORM_CREDIT_ID, amount: credits, kind: "purchase", sourceKey: `topup:${reference}`, note: label }], { session });
+  return user;
 }

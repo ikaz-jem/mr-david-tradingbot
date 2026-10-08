@@ -17,11 +17,11 @@ export async function POST(request: Request) {
   try {
     await connectDB();
     const tokenHash = hashEmailToken(parsed.data.token);
-    if (!await EmailToken.exists({ tokenHash, kind: "reset", expiresAt: { $gt: new Date() } })) return NextResponse.json({ error: "This link is invalid or expired. Request a new one." }, { status: 400 });
+    if (!await EmailToken.exists({ tokenHash, kind: { $in: ["reset", "invite"] }, expiresAt: { $gt: new Date() } })) return NextResponse.json({ error: "This link is invalid or expired. Request a new one." }, { status: 400 });
     const passwordHash = await hash(parsed.data.password, 12);
-    const token = await EmailToken.findOneAndDelete({ tokenHash, kind: "reset", expiresAt: { $gt: new Date() } });
+    const token = await EmailToken.findOneAndDelete({ tokenHash, kind: { $in: ["reset", "invite"] }, expiresAt: { $gt: new Date() } });
     if (!token) return NextResponse.json({ error: "This link has already been used." }, { status: 400 });
-    const user = await User.findByIdAndUpdate(token.userId, { $set: { passwordHash }, $inc: { authVersion: 1 } }, { new: true });
+    const user = await User.findByIdAndUpdate(token.userId, { $set: { passwordHash, ...(token.kind === "invite" ? { status: "active", emailVerifiedAt: new Date(), mustChangePassword: false } : {}) }, $inc: { authVersion: 1 } }, { returnDocument: "after" });
     if (!user) return NextResponse.json({ error: "Account unavailable." }, { status: 404 });
     await EmailToken.deleteMany({ userId: user._id, kind: "reset" });
     const template = passwordChangedEmail(user.name);

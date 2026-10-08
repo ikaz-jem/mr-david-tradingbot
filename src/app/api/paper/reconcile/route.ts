@@ -19,7 +19,9 @@ export async function POST(request: Request) {
     await connectDB();
     if (session.user.isDemo) {
       if (!await User.exists({ _id: session.user.id, isDemo: true, status: "active" })) return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
-      if (!(await getPlatformConfig(true)).paperReconciliationOpen) return NextResponse.json({ error: "Demo paper refresh is paused in admin controls." }, { status: 503 });
+      const config = await getPlatformConfig(true);
+      if (config.maintenanceMode) return NextResponse.json({ error: config.maintenanceMessage }, { status: 503 });
+      if (!config.paperReconciliationOpen) return NextResponse.json({ error: config.paperReconciliationPausedMessage }, { status: 503 });
       const samples = await Signal.find({ userId: session.user.id, modelVersion: "demo-scan-v1" }).sort({ createdAt: -1 }).limit(30).lean();
       let updated = 0;
       for (const signal of samples) {
@@ -29,7 +31,9 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ updated, pending: 0, failures: [], message: updated ? `${updated} synthetic outcomes saved. No live market data was used.` : "All recent demo outcomes are up to date. Run a new scan to add another sample." });
     }
-    if (!(await getPlatformConfig()).paperReconciliationOpen) return NextResponse.json({ error: "Paper outcome refresh is temporarily paused by operations." }, { status: 503 });
+    const config = await getPlatformConfig();
+    if (config.maintenanceMode) return NextResponse.json({ error: config.maintenanceMessage }, { status: 503 });
+    if (!config.paperReconciliationOpen) return NextResponse.json({ error: config.paperReconciliationPausedMessage }, { status: 503 });
     if (!await User.exists({ _id: session.user.id, status: "active" })) return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
     const signals = await Signal.find({ userId: session.user.id }).sort({ createdAt: -1 }).limit(30).lean();
     const outcomes = await PaperOutcome.find({ signalId: { $in: signals.map(signal => signal._id) } }).lean();

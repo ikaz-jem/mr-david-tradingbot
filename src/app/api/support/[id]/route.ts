@@ -20,7 +20,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (!actor) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const { id } = await context.params;
   if (!mongoose.isObjectIdOrHexString(id)) return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  const staff = actor.role !== "user" && new URL(request.url).searchParams.get("view") === "staff";
+  const staffRequested = new URL(request.url).searchParams.get("view") === "staff";
+  if (staffRequested && (actor.organizationKind !== "platform" || !actor.can("support:update"))) return NextResponse.json({ error: "Support update permission required." }, { status: 403 });
+  const staff = staffRequested;
   const parsed = input.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid ticket update." }, { status: 400 });
   const data = parsed.data;
@@ -33,7 +35,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   else if (data.body && !data.internal) fields.status = staff ? "waiting" : "open";
   if (data.priority) fields.priority = data.priority;
   if (data.assignToMe !== undefined) { fields.assignedTo = data.assignToMe ? actor.id : null; fields.assignedName = data.assignToMe ? actor.name : ""; }
-  const result = await SupportTicket.updateOne({ _id: id, revision: data.revision }, {
+  const result = await SupportTicket.updateOne({ _id: id, revision: data.revision, isDemo: actor.isDemo, ...(staff ? {} : { userId: actor.id }) }, {
     $set: fields, $inc: { revision: 1 },
     ...(data.body ? { $push: { messages: { authorId: actor.id, authorName: actor.name, staff, internal: data.internal, body: data.body, createdAt: new Date() } } } : {}),
   });

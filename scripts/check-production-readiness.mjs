@@ -26,6 +26,8 @@ if (authSecret && (authSecret.length < 32 || /replace|example|secret/i.test(auth
 httpsUrl("NEXTAUTH_URL");
 httpsUrl("APP_URL");
 if (process.env.NEXTAUTH_URL && process.env.APP_URL && process.env.NEXTAUTH_URL.replace(/\/$/, "") !== process.env.APP_URL.replace(/\/$/, "")) warnings.push("NEXTAUTH_URL and APP_URL use different origins");
+const cronSecret = required("CRON_SECRET");
+if (cronSecret && (cronSecret.length < 16 || /replace|example|scheduler-secret/i.test(cronSecret))) errors.push("CRON_SECRET must be a unique random value of at least 16 characters");
 
 const encryptionKey = required("EXCHANGE_ENCRYPTION_KEY");
 if (encryptionKey) {

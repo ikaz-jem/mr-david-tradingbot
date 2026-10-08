@@ -4,7 +4,7 @@ import { EmailToken } from "@/models/EmailToken";
 
 export const hashEmailToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export async function issueEmailToken(userId: mongoose.Types.ObjectId, kind: "verify" | "reset", minutes: number) {
+export async function issueEmailToken(userId: mongoose.Types.ObjectId, kind: "verify" | "reset" | "invite", minutes: number) {
   const token = randomBytes(32).toString("base64url");
   await EmailToken.deleteMany({ userId, kind });
   await EmailToken.create({ userId, kind, tokenHash: hashEmailToken(token), expiresAt: new Date(Date.now() + minutes * 60_000) });

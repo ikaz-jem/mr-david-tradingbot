@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
-import { ensureWelcomeCredits } from "@/lib/credits";
 import { User } from "@/models/User";
 import { seedDemoResearch } from "@/lib/demo-workspace";
 
@@ -27,7 +26,6 @@ export async function getOrCreateDemoUser(role: "user" | "admin") {
     user = await User.findOneAndUpdate({ _id: user._id, isDemo: true }, { $set: { role, status: "active", emailVerifiedAt: new Date() } }, { new: true });
   }
   if (!user) return null;
-  await ensureWelcomeCredits(user.id);
   await seedDemoResearch(user.id, user.name);
   if (role === "admin") await ensureDemoCustomers();
   return user;

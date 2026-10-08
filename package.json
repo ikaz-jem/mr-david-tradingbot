@@ -4,13 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
+    "dev:atlas": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev-atlas.ps1",
     "build": "next build",
     "start": "next start",
     "make-admin": "node --env-file=.env.local scripts/promote-admin.mjs",
     "create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
+    "seed:live": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/seed-live.mjs",
+    "migrate:activation": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-activation-model.mjs",
+    "migrate:access": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-access-control.mjs",
+    "migrate:approval-execution": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-approval-execution.mjs",
     "typecheck": "tsc --noEmit",
     "check:production": "node --env-file=.env.local scripts/check-production-readiness.mjs",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.mjs",
+    "smoke:approval": "node scripts/smoke-approval-desk.mjs",
+    "smoke:operations": "node scripts/smoke-operations-controls.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -24,6 +31,7 @@
     "mongoose": "9.10.2",
     "next": "16.3.6",
     "next-auth": "4.24.15",
+    "qrcode.react": "4.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "^3.2.0",

@@ -1,8 +1,7 @@
 import { AdminActivityRefresh } from "@/components/admin-activity-refresh";
-import { getServerSession } from "next-auth";
 import { notFound } from "next/navigation";
 import { EmptyState, PageIntro, SectionHeader } from "@/components/dashboard-ui";
-import { authOptions } from "@/lib/auth";
+import { workspaceActor } from "@/lib/workspace-access";
 import { connectDB } from "@/lib/db";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { BillingPurchase } from "@/models/BillingPurchase";
@@ -23,29 +22,30 @@ export const dynamic = "force-dynamic";
 type Item = { id: string; kind: string; title: string; detail: string; at: Date; severity: "normal" | "attention" };
 
 export default async function AdminActivityPage() {
-  const session = await getServerSession(authOptions);
   await connectDB();
-  const actor = session?.user.id ? await User.findById(session.user.id).select("role status isDemo").lean() : null;
-  if (!actor || actor.role !== "admin" || actor.status !== "active") notFound();
+  const actor = await workspaceActor();
+  if (!actor?.can("audit:read")) notFound();
   if (actor.isDemo) return <DemoActivity/>;
+  const demoIds = (await User.find({ isDemo: true }).select("_id").lean()).map(user => user._id);
+  const liveOwner = { userId: { $nin: demoIds } };
   const [users, scans, signals, outcomes, orders, credits, checkouts, purchases, webhooks, emails, notifications, audits, exchangeEvents, running, unknownOrders, paymentReviews, livePaymentReviews, emailIssues] = await Promise.all([
-    User.find().sort({ createdAt: -1 }).limit(12).select("email role isDemo createdAt").lean(),
-    ScanRun.find().sort({ createdAt: -1 }).limit(20).select("symbol status outcome summary userId createdAt").lean(),
-    Signal.find().sort({ createdAt: -1 }).limit(12).select("symbol status userId createdAt").lean(),
-    PaperOutcome.find().sort({ updatedAt: -1 }).limit(12).select("status reason userId updatedAt").lean(),
-    Order.find().sort({ updatedAt: -1 }).limit(12).select("symbol status userId updatedAt").lean(),
-    CreditEntry.find().sort({ createdAt: -1 }).limit(15).select("amount kind note userId createdAt").lean(),
+    User.find({ isDemo: { $ne: true } }).sort({ createdAt: -1 }).limit(12).select("email role isDemo createdAt").lean(),
+    ScanRun.find(liveOwner).sort({ createdAt: -1 }).limit(20).select("symbol status outcome summary userId createdAt").lean(),
+    Signal.find(liveOwner).sort({ createdAt: -1 }).limit(12).select("symbol status userId createdAt").lean(),
+    PaperOutcome.find(liveOwner).sort({ updatedAt: -1 }).limit(12).select("status reason userId updatedAt").lean(),
+    Order.find(liveOwner).sort({ updatedAt: -1 }).limit(12).select("symbol status userId updatedAt").lean(),
+    CreditEntry.find(liveOwner).sort({ createdAt: -1 }).limit(15).select("amount kind note userId createdAt").lean(),
     PaystackCheckout.find().sort({ updatedAt: -1 }).limit(12).select("planId status userId updatedAt").lean(),
-    BillingPurchase.find().sort({ updatedAt: -1 }).limit(15).select("kind itemId status userId reference updatedAt").lean(),
+    BillingPurchase.find({ isDemo: { $ne: true } }).sort({ updatedAt: -1 }).limit(15).select("kind itemId status userId reference updatedAt").lean(),
     PaystackWebhookEvent.find().sort({ createdAt: -1 }).limit(12).select("type outcome reference createdAt").lean(),
     EmailDelivery.find().sort({ updatedAt: -1 }).limit(12).select("category status recipient updatedAt").lean(),
-    Notification.find().sort({ createdAt: -1 }).limit(12).select("kind title userId createdAt").lean(),
-    AdminAuditEvent.find().sort({ createdAt: -1 }).limit(20).select("action before after reason status actorId targetUserId targetType targetId createdAt").lean(),
-    ExchangeConnectionEvent.find().sort({ createdAt: -1 }).limit(20).select("userId provider action detail createdAt").lean(),
-    ScanRun.countDocuments({ status: "running" }),
-    Order.countDocuments({ status: "unknown" }),
+    Notification.find(liveOwner).sort({ createdAt: -1 }).limit(12).select("kind title userId createdAt").lean(),
+    AdminAuditEvent.find({ actorId: { $nin: demoIds } }).sort({ createdAt: -1 }).limit(20).select("action before after reason status actorId targetUserId targetType targetId createdAt").lean(),
+    ExchangeConnectionEvent.find(liveOwner).sort({ createdAt: -1 }).limit(20).select("userId provider action detail createdAt").lean(),
+    ScanRun.countDocuments({ ...liveOwner, status: "running" }),
+    Order.countDocuments({ ...liveOwner, status: "unknown" }),
     PaystackWebhookEvent.countDocuments({ outcome: "review" }),
-    BillingPurchase.countDocuments({ status: "review" }),
+    BillingPurchase.countDocuments({ isDemo: { $ne: true }, status: "review" }),
     EmailDelivery.countDocuments({ status: { $in: ["failed", "bounced", "complained"] } }),
   ]);
   const ids = [...new Set([...scans.map(item => String(item.userId)), ...signals.map(item => String(item.userId)), ...outcomes.map(item => String(item.userId)), ...orders.map(item => String(item.userId)), ...credits.map(item => String(item.userId)), ...checkouts.map(item => String(item.userId)), ...purchases.map(item => String(item.userId)), ...notifications.map(item => String(item.userId)), ...exchangeEvents.map(item => String(item.userId)), ...audits.flatMap(item => [String(item.actorId), ...(item.targetUserId ? [String(item.targetUserId)] : [])])])];

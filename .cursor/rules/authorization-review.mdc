@@ -1,0 +1,21 @@
+---
+description: Mandatory authentication, authorization, tenant-isolation, and audit review for every feature
+alwaysApply: true
+---
+
+# Authorization Review Gate
+
+For every route, API, component, model, job, script, and feature:
+
+1. Classify access as public, authenticated, resource owner, staff permission, admin permission, or trusted system operation. If public, confirm that it exposes no protected data or mutation.
+2. Protected access is deny-by-default. Enforce it server-side with centralized helpers such as `can(actor, "resource:action")`; never rely on hidden or disabled UI.
+3. Scope every protected query and mutation to the actor's organization/tenant and, where applicable, resource ownership. Never accept a client-supplied tenant as authority.
+4. Use granular `resource:action` permissions and least privilege. Avoid scattered role-name checks except inside the centralized resolver or bootstrap policy.
+5. Separate demo/live scopes and user/admin/staff capabilities. Prevent privilege escalation, self-granting, and granting permissions the actor cannot grant.
+6. Add immutable audit events for permission, role, user-status, authentication, billing, execution, credential, and sensitive configuration changes. Include actor, tenant, action, resource/target, before/after values, IP, user agent, and timestamp where available.
+7. Add rate limiting and confirmation/re-authentication for destructive or high-risk operations when appropriate.
+8. Keep frontend permission checks consistent with backend effective permissions, while treating them only as UX.
+9. Add positive, unauthorized, privilege-escalation, ownership, and cross-tenant tests for protected functionality. Schema evolution must use a non-destructive migration.
+10. In the implementation handoff, state the access classification and controls added—or explicitly state why the change is public and requires none.
+
+Do not ship a protected feature until this review is complete.
