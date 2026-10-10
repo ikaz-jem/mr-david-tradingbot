@@ -27,6 +27,12 @@ try {
   let saved = await admin.request.post("/api/admin/affiliates", { headers, data: { action: "settings", ...initial, rates: [1250, 250, 125], reason: "Reversible affiliate settings test" } });
   assert.equal(saved.status(), 200, await saved.text());
   assert.deepEqual((await (await user.request.get("/api/affiliates")).json()).config.rates, [1250, 250, 125]);
+  const userReport = await (await user.request.get("/api/affiliates")).json();
+  const payoutSaved = await user.request.post("/api/affiliates", { headers, data: { method: "external", revision: userReport.payoutProfile.revision, label: "Demo finance desk", instructions: "Send through the verified finance contact on file." } });
+  assert.equal(payoutSaved.status(), 200, await payoutSaved.text());
+  const payoutProfile = (await (await user.request.get("/api/affiliates")).json()).payoutProfile;
+  assert.equal(payoutProfile.method, "external");
+  assert.equal(payoutProfile.details.instructions, "Send through the verified finance contact on file.");
   saved = await admin.request.post("/api/admin/affiliates", { headers, data: { action: "settings", ...initial, rates: [9000, 2000], reason: "Reject excessive commission rates" } });
   assert.equal(saved.status(), 400);
   saved = await user.request.post("/api/admin/affiliates", { headers, data: { action: "settings", ...initial, reason: "Customer must not change program" } });

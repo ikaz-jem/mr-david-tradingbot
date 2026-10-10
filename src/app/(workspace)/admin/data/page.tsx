@@ -18,9 +18,10 @@ import { ProductDefinition } from "@/models/ProductDefinition";
 import { BillingPurchase } from "@/models/BillingPurchase";
 import { Notification } from "@/models/Notification";
 import { DemoDataExplorer } from "@/components/demo-data-explorer";
+import { AuthorizationAuditLog } from "@/models/AuthorizationAuditLog";
 
 export const dynamic = "force-dynamic";
-const categories = ["users", "products", "scans", "signals", "paper", "orders", "connections", "credits", "billing", "paystack", "payment-events", "notifications", "emails", "admin-audit"] as const;
+const categories = ["users", "products", "scans", "signals", "paper", "orders", "connections", "credits", "billing", "paystack", "payment-events", "notifications", "emails", "admin-audit", "security-audit"] as const;
 type Category = typeof categories[number];
 type Table = { title: string; columns: string[]; rows: string[][]; total: number };
 const id = (value: unknown) => String(value);
@@ -35,7 +36,7 @@ export default async function AdminDataPage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   if (actor.isDemo) return <DemoDataExplorer category={category} page={page}/>;
   const demoIds = (await User.find({ isDemo: true }).select("_id").lean()).map(user => String(user._id));
-  const table = await loadTable(category, (page - 1) * 50, demoIds);
+  const table = await loadTable(category, (page - 1) * 50, demoIds, actor.organizationId);
   return <>
     <PageIntro eyebrow="Operations / records" title="Data explorer" description="Paginated read-only records across the platform. Password hashes, email tokens, API credentials, and other secrets are never shown here."/>
     <nav aria-label="Record categories" className="app-scrollbar mb-5 flex flex-wrap gap-2">{categories.map(item => <Link key={item} href={`/admin/data?category=${item}`} className={`rounded-lg border px-3 py-2 text-xs font-bold capitalize ${item === category ? "border-[#8eba4f] bg-[#c5ff4117] text-accent" : "border-line text-muted hover:text-white"}`}>{item.replaceAll("-", " ")}</Link>)}</nav>
@@ -44,7 +45,7 @@ export default async function AdminDataPage({ searchParams }: { searchParams: Pr
   </>;
 }
 
-async function loadTable(category: Category, skip: number, demoIds: string[]): Promise<Table> {
+async function loadTable(category: Category, skip: number, demoIds: string[], organizationId: string): Promise<Table> {
   const liveOwner = { userId: { $nin: demoIds } };
   switch (category) {
     case "users": {
@@ -77,14 +78,14 @@ async function loadTable(category: Category, skip: number, demoIds: string[]): P
     }
     case "credits": {
       const [total, records] = await Promise.all([CreditEntry.countDocuments(liveOwner), CreditEntry.find(liveOwner).sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
-      return { title: "Credit ledger", total, columns: ["User ID", "Balance", "Amount", "Kind", "Source key", "Note", "Created"], rows: records.map(row => [id(row.userId), row.productId ?? "platform", String(row.amount), row.kind, row.sourceKey, row.note, date(row.createdAt)]) };
+      return { title: "Credit ledger", total, columns: ["User ID", "Product", "Amount", "Kind", "Source key", "Note", "Created"], rows: records.map(row => [id(row.userId), row.productId ?? "platform", String(row.amount), row.kind, row.sourceKey, row.note, date(row.createdAt)]) };
     }
     case "billing": {
       const [total, records] = await Promise.all([BillingPurchase.countDocuments({ isDemo: { $ne: true } }), BillingPurchase.find({ isDemo: { $ne: true } }).sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
       return { title: "Live billing purchases", total, columns: ["User ID", "Product", "Kind", "Item", "Credits", "Amount minor", "Currency", "Status", "Reference", "Verified"], rows: records.map(row => [id(row.userId), row.productId, row.kind, row.itemId, String(row.credits), String(row.expectedAmount), row.currency, row.status, row.reference, date(row.verifiedAt)]) };
     }
     case "paystack": {
-      const [total, records] = await Promise.all([PaystackCheckout.countDocuments(), PaystackCheckout.find().sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
+      const [total, records] = await Promise.all([PaystackCheckout.countDocuments(liveOwner), PaystackCheckout.find(liveOwner).sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
       return { title: "Paystack test checkouts", total, columns: ["User ID", "Plan", "Amount", "Currency", "Status", "Reference", "Verified", "Created"], rows: records.map(row => [id(row.userId), row.planId, String(row.expectedAmount), row.currency, row.status, row.reference, date(row.verifiedAt), date(row.createdAt)]) };
     }
     case "payment-events": {
@@ -103,6 +104,11 @@ async function loadTable(category: Category, skip: number, demoIds: string[]): P
       const liveAudit = { actorId: { $nin: demoIds } };
       const [total, records] = await Promise.all([AdminAuditEvent.countDocuments(liveAudit), AdminAuditEvent.find(liveAudit).sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
       return { title: "Admin audit", total, columns: ["Actor ID", "Target type", "Target ID", "Action", "Before", "After", "Status", "Reason", "Created"], rows: records.map(row => [id(row.actorId), row.targetType || "user", row.targetId || (row.targetUserId ? id(row.targetUserId) : "—"), row.action, row.before, row.after, row.status, row.reason, date(row.createdAt)]) };
+    }
+    case "security-audit": {
+      const scope = { organizationId };
+      const [total, records] = await Promise.all([AuthorizationAuditLog.countDocuments(scope), AuthorizationAuditLog.find(scope).sort({ createdAt: -1 }).skip(skip).limit(50).lean()]);
+      return { title: "Immutable security audit", total, columns: ["Actor ID", "Action", "Resource", "Target", "Outcome", "Reason", "IP", "Request ID", "Created"], rows: records.map(row => [row.actorId ? id(row.actorId) : "Unauthenticated", row.action, row.resource, `${row.targetType}${row.targetId ? ` · ${row.targetId}` : ""}`, row.outcome, row.reason || "—", row.ip || "—", row.requestId || "—", date(row.createdAt)]) };
     }
   }
 }

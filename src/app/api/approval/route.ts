@@ -49,7 +49,7 @@ async function currentUser() {
 
 async function serializeState(userId: string, isDemo: boolean, message?: string) {
   const scope: "demo" | "live" = isDemo ? "demo" : "live";
-  if (isDemo) { await ensureDemoWorkspace(userId); await seedDemoApprovalOpportunities(); }
+  if (isDemo) { await ensureDemoWorkspace(userId); await seedDemoApprovalOpportunities(userId); }
   await expireApprovalOpportunities(scope);
   if (!isDemo && (await getPlatformConfig(false)).paperReconciliationOpen) await reconcileApprovalPositions(userId);
   if (!isDemo) await reconcilePendingApprovalOrders(userId);
@@ -169,7 +169,8 @@ export async function POST(request: Request) {
     try {
       const futuresConfig = market === "futures" ? { leverage: parsed.data.leverage ?? 1, marginMode: parsed.data.marginMode ?? "isolated", positionMode: "one_way" as const, triggerPriceType: parsed.data.triggerPriceType ?? "mark" } : undefined;
       const result = await executeApprovalOnExchange({ provider: parsed.data.provider, market, userId, approvalUnlockId: String(interaction._id), opportunityId: String(opportunity._id), symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt, referencePrice: validity.markPrice ?? opportunity.entry, stopPrice: opportunity.stop, targetPrice: opportunity.target, futuresConfig });
-      await writeSecurityAudit({ actor, action: "exchange.order.execute", resource: "orders", targetType: "ApprovalUnlock", targetId: String(interaction._id), previousValue: { status: interaction.status }, newValue: { provider: parsed.data.provider, market, symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt, leverage: futuresConfig?.leverage, marginMode: futuresConfig?.marginMode, orderId: result.orderId, status: result.status, protectionStatus: result.protectionStatus }, outcome: "success", reason: `User explicitly confirmed live ${definition.name} ${market} execution`, request });
+      const protectionStatus = "protectionStatus" in result ? result.protectionStatus : undefined;
+      await writeSecurityAudit({ actor, action: "exchange.order.execute", resource: "orders", targetType: "ApprovalUnlock", targetId: String(interaction._id), previousValue: { status: interaction.status }, newValue: { provider: parsed.data.provider, market, symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt, leverage: futuresConfig?.leverage, marginMode: futuresConfig?.marginMode, orderId: result.orderId, status: result.status, protectionStatus }, outcome: "success", reason: `User explicitly confirmed live ${definition.name} ${market} execution`, request });
       const label = result.state === "filled" ? "filled" : result.state === "partial" ? "partially filled" : "accepted";
       return NextResponse.json(await serializeState(userId, false, `${definition.name} ${market === "futures" ? "Futures position" : "Spot order"} ${label}. Order ${result.orderId}.`));
     } catch (error) {

@@ -9,10 +9,11 @@ import { PaperOutcome } from "@/models/PaperOutcome";
 import { Order } from "@/models/Order";
 import { Notification } from "@/models/Notification";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
+import { AuthorizationAuditLog } from "@/models/AuthorizationAuditLog";
 import { DemoEmail } from "@/models/DemoEmail";
 import type { Types } from "mongoose";
 
-const categories = ["users", "products", "scans", "signals", "paper", "orders", "connections", "credits", "billing", "paystack", "payment-events", "notifications", "emails", "admin-audit"] as const;
+const categories = ["users", "products", "scans", "signals", "paper", "orders", "connections", "credits", "billing", "paystack", "payment-events", "notifications", "emails", "admin-audit", "security-audit"] as const;
 type Category = typeof categories[number];
 type Table = { title: string; columns: string[]; rows: string[][] };
 type DemoUserRow = { _id: Types.ObjectId; email: string; name: string; role: string; status: string; countryCode?: string | null; createdAt: Date };
@@ -70,6 +71,10 @@ async function load(category: Category, ids: Types.ObjectId[], names: Map<string
   if (category === "admin-audit") {
     const records = await AdminAuditEvent.find({ actorId: { $in: ids } }).sort({ createdAt: -1 }).limit(500).lean();
     return { title: "Admin audit", columns: ["Actor", "Action", "Target", "Before", "After", "Status", "Reason", "Created"], rows: records.map(row => [names.get(String(row.actorId)) || "Demo admin", row.action, row.targetId || row.targetType, row.before, row.after, row.status, row.reason, date(row.createdAt)]) };
+  }
+  if (category === "security-audit") {
+    const records = await AuthorizationAuditLog.find({ actorId: { $in: ids } }).sort({ createdAt: -1 }).limit(500).lean();
+    return { title: "Security audit", columns: ["Actor", "Action", "Resource", "Target", "Outcome", "Reason", "Created"], rows: records.map(row => [row.actorId ? names.get(String(row.actorId)) || "Demo admin" : "Unauthenticated", row.action, row.resource, `${row.targetType}${row.targetId ? ` · ${row.targetId}` : ""}`, row.outcome, row.reason || "—", date(row.createdAt)]) };
   }
   return { title: category === "paystack" ? "Payment checkouts" : "Payment events", columns: ["Status"], rows: [] };
 }

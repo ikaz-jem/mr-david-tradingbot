@@ -72,7 +72,7 @@ async function placeBinance(input: FuturesPlaceInput, notional: number): Promise
   try {
     const stop = await binanceSigned(input, "/fapi/v1/algoOrder", { ...base, type: "STOP_MARKET", triggerPrice: decimal(input.stopPrice), clientAlgoId: (input.clientOrderId + "S").slice(0, 32) }, true); stopOrderId = String(stop.algoId ?? "");
     const target = await binanceSigned(input, "/fapi/v1/algoOrder", { ...base, type: "TAKE_PROFIT_MARKET", triggerPrice: decimal(input.targetPrice), clientAlgoId: (input.clientOrderId + "T").slice(0, 32) }, true); targetOrderId = String(target.algoId ?? "");
-  } catch (error) { throw new FuturesOrderError("Entry was accepted, but Binance protection could not be fully confirmed. Manage this position immediately.", 503, true, { entryOrderId, clientOrderId: input.clientOrderId, stopOrderId, targetOrderId, protectionStatus: "failed" }); }
+  } catch { throw new FuturesOrderError("Entry was accepted, but Binance protection could not be fully confirmed. Manage this position immediately.", 503, true, { entryOrderId, clientOrderId: input.clientOrderId, stopOrderId, targetOrderId, protectionStatus: "failed" }); }
   return { entryOrderId, clientOrderId: String(entry.clientOrderId ?? input.clientOrderId), status: mapStatus(entry.status), executedQty: String(entry.executedQty ?? quantity), averageFillPrice: Number(entry.avgPrice ?? 0) || null, stopOrderId, targetOrderId, protectionStatus: stopOrderId && targetOrderId ? "active" : "failed" };
 }
 

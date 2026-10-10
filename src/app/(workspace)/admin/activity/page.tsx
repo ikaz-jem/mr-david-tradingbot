@@ -17,6 +17,7 @@ import { ScanRun } from "@/models/ScanRun";
 import { Signal } from "@/models/Signal";
 import { User } from "@/models/User";
 import { DemoActivity } from "@/components/demo-activity";
+import { AuthorizationAuditLog } from "@/models/AuthorizationAuditLog";
 
 export const dynamic = "force-dynamic";
 type Item = { id: string; kind: string; title: string; detail: string; at: Date; severity: "normal" | "attention" };
@@ -28,19 +29,20 @@ export default async function AdminActivityPage() {
   if (actor.isDemo) return <DemoActivity/>;
   const demoIds = (await User.find({ isDemo: true }).select("_id").lean()).map(user => user._id);
   const liveOwner = { userId: { $nin: demoIds } };
-  const [users, scans, signals, outcomes, orders, credits, checkouts, purchases, webhooks, emails, notifications, audits, exchangeEvents, running, unknownOrders, paymentReviews, livePaymentReviews, emailIssues] = await Promise.all([
+  const [users, scans, signals, outcomes, orders, credits, checkouts, purchases, webhooks, emails, notifications, audits, securityAudits, exchangeEvents, running, unknownOrders, paymentReviews, livePaymentReviews, emailIssues] = await Promise.all([
     User.find({ isDemo: { $ne: true } }).sort({ createdAt: -1 }).limit(12).select("email role isDemo createdAt").lean(),
     ScanRun.find(liveOwner).sort({ createdAt: -1 }).limit(20).select("symbol status outcome summary userId createdAt").lean(),
     Signal.find(liveOwner).sort({ createdAt: -1 }).limit(12).select("symbol status userId createdAt").lean(),
     PaperOutcome.find(liveOwner).sort({ updatedAt: -1 }).limit(12).select("status reason userId updatedAt").lean(),
     Order.find(liveOwner).sort({ updatedAt: -1 }).limit(12).select("symbol status userId updatedAt").lean(),
     CreditEntry.find(liveOwner).sort({ createdAt: -1 }).limit(15).select("amount kind note userId createdAt").lean(),
-    PaystackCheckout.find().sort({ updatedAt: -1 }).limit(12).select("planId status userId updatedAt").lean(),
+    PaystackCheckout.find(liveOwner).sort({ updatedAt: -1 }).limit(12).select("planId status userId updatedAt").lean(),
     BillingPurchase.find({ isDemo: { $ne: true } }).sort({ updatedAt: -1 }).limit(15).select("kind itemId status userId reference updatedAt").lean(),
     PaystackWebhookEvent.find().sort({ createdAt: -1 }).limit(12).select("type outcome reference createdAt").lean(),
     EmailDelivery.find().sort({ updatedAt: -1 }).limit(12).select("category status recipient updatedAt").lean(),
     Notification.find(liveOwner).sort({ createdAt: -1 }).limit(12).select("kind title userId createdAt").lean(),
     AdminAuditEvent.find({ actorId: { $nin: demoIds } }).sort({ createdAt: -1 }).limit(20).select("action before after reason status actorId targetUserId targetType targetId createdAt").lean(),
+    AuthorizationAuditLog.find({ organizationId: actor.organizationId }).sort({ createdAt: -1 }).limit(30).select("actorId action resource targetType targetId outcome reason ip requestId createdAt").lean(),
     ExchangeConnectionEvent.find(liveOwner).sort({ createdAt: -1 }).limit(20).select("userId provider action detail createdAt").lean(),
     ScanRun.countDocuments({ ...liveOwner, status: "running" }),
     Order.countDocuments({ ...liveOwner, status: "unknown" }),
@@ -48,7 +50,7 @@ export default async function AdminActivityPage() {
     BillingPurchase.countDocuments({ isDemo: { $ne: true }, status: "review" }),
     EmailDelivery.countDocuments({ status: { $in: ["failed", "bounced", "complained"] } }),
   ]);
-  const ids = [...new Set([...scans.map(item => String(item.userId)), ...signals.map(item => String(item.userId)), ...outcomes.map(item => String(item.userId)), ...orders.map(item => String(item.userId)), ...credits.map(item => String(item.userId)), ...checkouts.map(item => String(item.userId)), ...purchases.map(item => String(item.userId)), ...notifications.map(item => String(item.userId)), ...exchangeEvents.map(item => String(item.userId)), ...audits.flatMap(item => [String(item.actorId), ...(item.targetUserId ? [String(item.targetUserId)] : [])])])];
+  const ids = [...new Set([...scans.map(item => String(item.userId)), ...signals.map(item => String(item.userId)), ...outcomes.map(item => String(item.userId)), ...orders.map(item => String(item.userId)), ...credits.map(item => String(item.userId)), ...checkouts.map(item => String(item.userId)), ...purchases.map(item => String(item.userId)), ...notifications.map(item => String(item.userId)), ...exchangeEvents.map(item => String(item.userId)), ...audits.flatMap(item => [String(item.actorId), ...(item.targetUserId ? [String(item.targetUserId)] : [])]), ...securityAudits.flatMap(item => item.actorId ? [String(item.actorId)] : [])])];
   const owners = await User.find({ _id: { $in: ids } }).select("email").lean();
   const emailById = new Map(owners.map(owner => [String(owner._id), owner.email]));
   const owner = (id: unknown) => emailById.get(String(id)) ?? "Unknown account";
@@ -65,6 +67,7 @@ export default async function AdminActivityPage() {
     ...emails.map(item => ({ id: `email:${item._id}`, kind: "Email", title: `${item.category} · ${item.status}`, detail: item.recipient, at: item.updatedAt, severity: ["failed", "bounced", "complained"].includes(item.status) ? "attention" as const : "normal" as const })),
     ...notifications.map(item => ({ id: `notification:${item._id}`, kind: "Notification", title: `${item.kind} · ${item.title}`, detail: owner(item.userId), at: item.createdAt, severity: "normal" as const })),
     ...audits.map(item => ({ id: `audit:${item._id}`, kind: "Admin change", title: `${item.action.replaceAll("_", " ")} · ${item.status}`, detail: `${owner(item.actorId)} changed ${item.targetType === "platform" ? "platform" : item.targetType === "signal" ? `signal ${item.targetId}` : owner(item.targetUserId)}: ${item.before} → ${item.after}. ${item.reason}`, at: item.createdAt, severity: item.status !== "applied" ? "attention" as const : "normal" as const })),
+    ...securityAudits.map(item => ({ id: `security:${item._id}`, kind: "Security audit", title: `${item.action.replaceAll(".", " ")} · ${item.outcome}`, detail: `${item.actorId ? owner(item.actorId) : "Unauthenticated"} · ${item.resource}/${item.targetType}${item.targetId ? `/${item.targetId}` : ""}${item.reason ? ` · ${item.reason}` : ""}${item.requestId ? ` · request ${item.requestId}` : ""}`, at: item.createdAt, severity: item.outcome === "success" ? "normal" as const : "attention" as const })),
     ...exchangeEvents.map(item => ({ id: `exchange:${item._id}`, kind: "Exchange connection", title: `Binance Spot · ${item.action.replaceAll("_", " ")}`, detail: `${owner(item.userId)} · ${item.detail}`, at: item.createdAt, severity: item.action === "check_failed" ? "attention" as const : "normal" as const })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 80);
   return <>

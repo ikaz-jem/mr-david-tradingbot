@@ -1,10 +1,13 @@
-param([Parameter(Mandatory = $true)][string]$Script)
+param(
+  [Parameter(Mandatory = $true)][string]$Script,
+  [Parameter(ValueFromRemainingArguments = $true)][string[]]$ScriptArgs
+)
 
 $envLine = Get-Content -LiteralPath '.env.local' | Where-Object { $_ -like 'MONGODB_URI=*' } | Select-Object -First 1
 if (-not $envLine) { throw 'MONGODB_URI is missing from .env.local.' }
 $configured = $envLine.Substring('MONGODB_URI='.Length).Trim()
 $uri = [System.Uri]$configured
-if ($uri.Scheme -ne 'mongodb+srv') { & node --env-file=.env.local --experimental-strip-types $Script; exit $LASTEXITCODE }
+if ($uri.Scheme -ne 'mongodb+srv') { & node --env-file=.env.local --experimental-strip-types $Script @ScriptArgs; exit $LASTEXITCODE }
 
 $srvName = "_mongodb._tcp.$($uri.Host)"
 $srv = Invoke-RestMethod -Uri "https://dns.google/resolve?name=$srvName&type=SRV"
@@ -15,5 +18,5 @@ $txtOptions = if ($txt.Status -eq 0 -and $txt.Answer) { ($txt.Answer[0].data -re
 $configuredQuery = $uri.Query.TrimStart('?')
 $options = @('tls=true', $txtOptions, $configuredQuery) | Where-Object { $_ } | Select-Object -Unique
 $env:MONGODB_URI = "mongodb://$($uri.UserInfo)@$hosts$($uri.AbsolutePath)?$($options -join '&')"
-& node --env-file=.env.local --experimental-strip-types $Script
+& node --env-file=.env.local --experimental-strip-types $Script @ScriptArgs
 exit $LASTEXITCODE

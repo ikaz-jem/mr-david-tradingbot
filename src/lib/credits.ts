@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import { CreditEntry } from "@/models/CreditEntry";
 import { User } from "@/models/User";
-import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 
 export const PLATFORM_CREDIT_ID = "platform";
 
@@ -9,6 +8,9 @@ export async function getAccountCreditState(userId: string) {
   const user = await User.findById(userId).select("creditBalance activatedAt isDemo").lean();
   if (!user) throw new Error("Account unavailable");
   if (user.isDemo) {
+    // Keep the server-only demo workspace out of live transaction workers and
+    // maintenance scripts that only use the production credit helpers below.
+    const { ensureDemoWorkspace } = await import("@/lib/demo-workspace");
     const workspace = await ensureDemoWorkspace(userId);
     return { balance: workspace?.creditBalance ?? 0, activated: Boolean(workspace?.activatedAt) };
   }
@@ -23,7 +25,7 @@ export async function activateAccount(userId: mongoose.Types.ObjectId, credits: 
   const user = await User.findOneAndUpdate(
     { _id: userId, status: "active", isDemo: false, activatedAt: null },
     { $set: { activatedAt: new Date(), activationReference: reference }, $inc: { creditBalance: credits } },
-    { new: true, session },
+    { returnDocument: "after", session },
   );
   if (!user) throw new Error("Account is already activated or unavailable");
   await CreditEntry.create([{ userId, productId: PLATFORM_CREDIT_ID, amount: credits, kind: "purchase", sourceKey: `activation:${reference}`, note: "Account activation credit grant" }], { session });
@@ -34,7 +36,7 @@ export async function addPurchasedCredits(userId: mongoose.Types.ObjectId, credi
   const user = await User.findOneAndUpdate(
     { _id: userId, status: "active", isDemo: false, activatedAt: { $ne: null } },
     { $inc: { creditBalance: credits } },
-    { new: true, session },
+    { returnDocument: "after", session },
   );
   if (!user) throw new Error("Activate the account before adding credits");
   await CreditEntry.create([{ userId, productId: PLATFORM_CREDIT_ID, amount: credits, kind: "purchase", sourceKey: `topup:${reference}`, note: label }], { session });

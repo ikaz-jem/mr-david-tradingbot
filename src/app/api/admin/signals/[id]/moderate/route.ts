@@ -7,6 +7,8 @@ import { isSameOrigin } from "@/lib/request-origin";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { Signal } from "@/models/Signal";
 import { User } from "@/models/User";
+import { consumeAdminMutationLimit } from "@/lib/admin-mutation-limit";
+import { writeSecurityAudit } from "@/lib/access-control";
 
 export const runtime = "nodejs";
 const schema = z.object({ reason: z.string().trim().min(12).max(300) });
@@ -14,13 +16,17 @@ const schema = z.object({ reason: z.string().trim().min(12).max(300) });
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   const actor = await workspaceActor();
-  if (!actor?.can("signals:update") || actor.organizationKind !== "platform") return NextResponse.json({ error: "Signal moderation permission required." }, { status: 403 });
+  if (!actor?.can("signals:update") || actor.organizationKind !== "platform") {
+    await writeSecurityAudit({ actor, action: "signals.invalidate", resource: "signals", targetType: "Signal", outcome: "denied", reason: "Signal moderation permission required", request }).catch(() => undefined);
+    return NextResponse.json({ error: "Signal moderation permission required." }, { status: 403 });
+  }
   const { id } = await params;
   if (!mongoose.isValidObjectId(id)) return NextResponse.json({ error: "Invalid signal." }, { status: 400 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Give a moderation reason of at least 12 characters." }, { status: 400 });
   try {
     await connectDB();
+    if (!await consumeAdminMutationLimit(actor.id, "signals:invalidate", 20)) return NextResponse.json({ error: "Too many moderation changes. Wait one minute and retry." }, { status: 429 });
     const signal = await Signal.findById(id).select("userId status").lean();
     if (!signal) return NextResponse.json({ error: "Signal not found." }, { status: 404 });
     const owner = await User.findById(signal.userId).select("isDemo").lean();
@@ -37,12 +43,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
       applied = true;
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "applied" } });
+      await writeSecurityAudit({ actor, action: "signals.invalidate", resource: "signals", targetType: "Signal", targetId: id, previousValue: { status: signal.status }, newValue: { status: "invalidated" }, outcome: "success", reason: parsed.data.reason, request }).catch(() => undefined);
       return NextResponse.json({ ok: true });
     } catch (error) {
       if (!applied) await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } }).catch(() => undefined);
       throw error;
     }
   } catch (error) {
+    await writeSecurityAudit({ actor, action: "signals.invalidate", resource: "signals", targetType: "Signal", targetId: id, outcome: "failed", reason: parsed.data.reason, request, metadata: { error: error instanceof Error ? error.message : "unknown" } }).catch(() => undefined);
     console.error("Signal moderation failed", error);
     return NextResponse.json({ error: "Moderation failed. Check the audit trail before retrying." }, { status: 503 });
   }

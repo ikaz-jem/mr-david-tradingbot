@@ -12,6 +12,8 @@ import { CreditEntry } from "@/models/CreditEntry";
 import { User } from "@/models/User";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 import { DemoWorkspace } from "@/models/DemoWorkspace";
+import { consumeAdminMutationLimit } from "@/lib/admin-mutation-limit";
+import { writeSecurityAudit } from "@/lib/access-control";
 
 export const runtime = "nodejs";
 const schema = z.object({ targetUserId: z.string().regex(/^[a-f0-9]{24}$/i), action: z.enum(["credit_adjustment", "activate_account"]), amount: z.number().int().min(-5000).max(5000).optional(), reason: z.string().trim().min(12).max(300) }).refine(value => value.action !== "credit_adjustment" || (value.amount !== undefined && value.amount !== 0));
@@ -19,11 +21,15 @@ const schema = z.object({ targetUserId: z.string().regex(/^[a-f0-9]{24}$/i), act
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   const actor = await workspaceActor();
-  if (!actor?.can("billing:update") || actor.organizationKind !== "platform") return NextResponse.json({ error: "Billing update permission required." }, { status: 403 });
+  if (!actor?.can("billing:update") || actor.organizationKind !== "platform") {
+    await writeSecurityAudit({ actor, action: "billing.adjust", resource: "billing", targetType: "User", outcome: "denied", reason: "Billing update permission required", request }).catch(() => undefined);
+    return NextResponse.json({ error: "Billing update permission required." }, { status: 403 });
+  }
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Enter a valid account action and reason of at least 12 characters." }, { status: 400 });
   try {
     const db = await connectDB();
+    if (!await consumeAdminMutationLimit(actor.id, "billing:adjust", 15)) return NextResponse.json({ error: "Too many billing changes. Wait one minute and retry." }, { status: 429 });
     const config = await getPlatformConfig(actor.isDemo);
     const operationId = randomUUID();
     if (actor.isDemo) {
@@ -41,6 +47,7 @@ export async function POST(request: Request) {
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: result.modifiedCount ? "applied" : "failed" } });
       if (!result.modifiedCount) return NextResponse.json({ error: "Account changed. Reload and try again." }, { status: 409 });
       await notifyUser({ userId: String(target._id), kind: "billing", title: parsed.data.action === "activate_account" ? "Demo account activated" : "Demo credits adjusted", body: parsed.data.reason, href: "/dashboard/credits", sourceKey: `demo-adjustment:${audit._id}` }).catch(console.error);
+      await writeSecurityAudit({ actor, action: `billing.${parsed.data.action}`, resource: "billing", targetType: "User", targetId: String(target._id), previousValue: JSON.parse(before), newValue: { activated: parsed.data.action === "activate_account" || Boolean(workspace.activatedAt), credits: workspace.creditBalance + amount }, outcome: "success", reason: parsed.data.reason, request, metadata: { scope: "demo", operationId } }).catch(() => undefined);
       return NextResponse.json({ ok: true, simulated: true });
     }
 
@@ -53,12 +60,17 @@ export async function POST(request: Request) {
       const before = JSON.stringify({ activated: Boolean(target.activatedAt), credits: target.creditBalance });
       const filter = parsed.data.action === "activate_account" ? { _id: target._id, activatedAt: null } : { _id: target._id, creditBalance: { $gte: Math.max(0, -amount) } };
       const update = parsed.data.action === "activate_account" ? { $set: { activatedAt: new Date(), activationReference: `admin:${operationId}` }, $inc: { creditBalance: amount } } : { $inc: { creditBalance: amount } };
-      const updated = await User.findOneAndUpdate(filter, update, { new: true, session: mongoSession });
+      const updated = await User.findOneAndUpdate(filter, update, { returnDocument: "after", session: mongoSession });
       if (!updated) throw new Error("Account changed before the adjustment was applied");
       await CreditEntry.create([{ userId: target._id, productId: "platform", amount, kind: "adjustment", sourceKey: `admin:${operationId}`, note: parsed.data.reason }], { session: mongoSession });
       await AdminAuditEvent.create([{ actorId: actor.id, targetUserId: target._id, targetType: "user", targetId: String(target._id), action: parsed.data.action, before, after: JSON.stringify({ activated: Boolean(updated.activatedAt), credits: updated.creditBalance }), reason: parsed.data.reason, status: "applied" }], { session: mongoSession });
     });
     await notifyUser({ userId: String(target._id), kind: "billing", title: parsed.data.action === "activate_account" ? "Account activated" : "Credit balance adjusted", body: `An Enrivea administrator updated your account. Reason: ${parsed.data.reason}`, href: "/dashboard/credits", sourceKey: `admin-billing:${operationId}` }).catch(error => console.error("Billing adjustment notification failed", error));
+    await writeSecurityAudit({ actor, action: `billing.${parsed.data.action}`, resource: "billing", targetType: "User", targetId: String(target._id), previousValue: { activated: Boolean(target.activatedAt), credits: target.creditBalance }, newValue: { creditDelta: amount }, outcome: "success", reason: parsed.data.reason, request, metadata: { scope: "live", operationId } }).catch(() => undefined);
     return NextResponse.json({ ok: true });
-  } catch (error) { console.error("Admin billing adjustment failed", error); return NextResponse.json({ error: "Adjustment failed. Check account state and database transaction support before retrying." }, { status: 503 }); }
+  } catch (error) {
+    await writeSecurityAudit({ actor, action: `billing.${parsed.data.action}`, resource: "billing", targetType: "User", targetId: parsed.data.targetUserId, outcome: "failed", reason: parsed.data.reason, request, metadata: { error: error instanceof Error ? error.message : "unknown" } }).catch(() => undefined);
+    console.error("Admin billing adjustment failed", error);
+    return NextResponse.json({ error: "Adjustment failed. Check account state and database transaction support before retrying." }, { status: 503 });
+  }
 }

@@ -14,6 +14,7 @@ import { buildApprovalScanPlan } from "@/lib/approval-scan-plan";
 import { notifyUser } from "@/lib/notifications";
 import { ApprovalPreference } from "@/models/ApprovalPreference";
 import { ApprovalScanJob } from "@/models/ApprovalScanJob";
+import { ApprovalUnlock } from "@/models/ApprovalUnlock";
 import { SharedOpportunity } from "@/models/SharedOpportunity";
 import { User } from "@/models/User";
 import { reconcileApprovalPositions } from "@/lib/approval-reconciliation";
@@ -48,18 +49,27 @@ export async function validateOpportunityNow(opportunity: { _id: Types.ObjectId;
   return { valid: true, markPrice };
 }
 
-export async function seedDemoApprovalOpportunities() {
+export async function seedDemoApprovalOpportunities(userId: string) {
   await connectDB();
+  if (!await User.exists({ _id: userId, isDemo: true, status: "active" })) throw new Error("Demo Approval Desk access is unavailable.");
   const now = Date.now();
   const fixtures = [
-    { symbol: "BTCUSDT", interval: "1h", side: "BUY", entry: 68420, stop: 67180, target: 70900, confidence: 84, strategySlug: "trend-breakout", strategyName: "Trend + Breakout", summary: "Bullish continuation candidate", thesis: "Price reclaimed the hourly range with aligned trend, expanding participation, and a defined breakout retest.", riskNote: "Invalidate if a completed hourly candle closes below the protected breakout range." },
-    { symbol: "ETHUSDT", interval: "4h", side: "SELL", entry: 3460, stop: 3548, target: 3284, confidence: 78, strategySlug: "mean-reversion", strategyName: "Mean Reversion", summary: "Bearish exhaustion candidate", thesis: "Price extended above its volatility band while momentum weakened, creating a bounded return-to-mean candidate.", riskNote: "Spot accounts cannot execute a naked short; use this as research unless derivatives execution is available." },
-    { symbol: "SOLUSDT", interval: "15m", side: "BUY", entry: 162.4, stop: 158.9, target: 169.4, confidence: 73, strategySlug: "momentum-continuation", strategyName: "Momentum Continuation", summary: "Intraday momentum candidate", thesis: "Short-term trend, momentum, and relative volume aligned after a controlled consolidation.", riskNote: "Short approval window; do not chase if price moves materially beyond the planned entry." },
+    { symbol: "BTCUSDT", interval: "1h", side: "BUY", entry: 68420, stop: 67180, target: 70900, confidence: 84, amountUsdt: 500, strategySlug: "trend-breakout", strategyName: "Trend + Breakout", summary: "BTC reclaimed its hourly range and held the breakout retest with expanding participation.", thesis: "The hourly structure shifted higher after price reclaimed resistance, retested it as support, and closed with improving relative volume. The protected entry keeps the trade close to invalidation while targeting the next visible liquidity area.", riskNote: "Demo setup. Invalidate if a completed hourly candle closes below 67,180; do not chase materially above the planned entry." },
+    { symbol: "ETHUSDT", interval: "4h", side: "SELL", entry: 3460, stop: 3548, target: 3284, confidence: 78, amountUsdt: 350, strategySlug: "mean-reversion", strategyName: "Mean Reversion", summary: "ETH shows a bounded short setup after momentum weakened above its four-hour volatility range.", thesis: "Price extended above the upper volatility band while momentum and participation diverged. The setup targets a controlled return toward the range mean with the invalidation placed beyond the exhaustion high.", riskNote: "Demo setup. This is a Futures short; Spot SELL cannot open it. Invalidate above 3,548 and use exchange-side protection." },
   ] as const;
+  const seeded = [];
   for (const [index, item] of fixtures.entries()) {
-    const fingerprint = `demo-approval-v2:${index}`;
-    await SharedOpportunity.findOneAndUpdate({ scope: "demo", fingerprint }, { $set: { ...item, scope: "demo", fingerprint, requestedStrategySlug: "ai-router", strategyVersion: 1, status: "active", marketFacts: { simulated: true }, invalidationDirection: item.side === "BUY" ? "below" : "above", invalidationPrice: item.stop, invalidationInstruction: item.riskNote, modelVersion: "demo-fixture-v2", providerResponseId: "", dataCutoff: new Date(now - (index + 1) * 5 * 60_000), expiresAt: new Date(now + (index + 2) * 45 * 60_000), invalidationReason: "" } }, { upsert: true, returnDocument: "after" });
+    const fingerprint = `demo-approval-showcase-v1:${index}`;
+    const opportunity = await SharedOpportunity.findOneAndUpdate({ scope: "demo", fingerprint }, { $set: { symbol: item.symbol, interval: item.interval, side: item.side, entry: item.entry, stop: item.stop, target: item.target, confidence: item.confidence, strategySlug: item.strategySlug, strategyName: item.strategyName, summary: item.summary, thesis: item.thesis, riskNote: item.riskNote, scope: "demo", fingerprint, requestedStrategySlug: "ai-router", strategyVersion: 1, status: "active", marketFacts: { simulated: true, source: "approval-desk-showcase" }, invalidationDirection: item.side === "BUY" ? "below" : "above", invalidationPrice: item.stop, invalidationInstruction: item.riskNote, modelVersion: "demo-fixture-v3", providerResponseId: "", dataCutoff: new Date(now - (index + 1) * 5 * 60_000), expiresAt: new Date(now + (index + 4) * 60 * 60_000), invalidationReason: "" } }, { upsert: true, returnDocument: "after" });
+    if (!opportunity) throw new Error("Demo opportunity could not be prepared.");
+    seeded.push({ opportunity, amountUsdt: item.amountUsdt });
   }
+  await SharedOpportunity.updateMany({ scope: "demo", fingerprint: /^demo-approval-v2:/, status: "active" }, { $set: { status: "expired", invalidationReason: "Replaced by the current Approval Desk showcase." } });
+  await Promise.all(seeded.map(({ opportunity, amountUsdt }) => ApprovalUnlock.updateOne(
+    { userId, opportunityId: opportunity._id },
+    { $setOnInsert: { userId, opportunityId: opportunity._id, status: "unlocked", creditCost: 2, amountUsdt, unlockedAt: new Date() } },
+    { upsert: true },
+  )));
 }
 
 export async function runApprovalDiscovery() {

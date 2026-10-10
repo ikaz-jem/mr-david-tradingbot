@@ -54,13 +54,14 @@ try {
   await ap.goto(base + "/admin/products");
   const adminConsent = ap.getByRole("button", { name: "Essential only" });
   await adminConsent.click();
-  await ap.getByRole("button", { name: "Add preview product" }).click();
+  await ap.getByRole("button", { name: "Add product" }).click();
   const form = ap.locator("form").last();
   await form.getByLabel("Description", { exact: true }).fill("A sample product for editing verification.");
   const productId = form.getByLabel("Product ID", { exact: true });
   assert.equal(await productId.getAttribute("readonly"), null, "Typing description must not lock the new ID");
   await productId.fill(slug);
   await form.getByLabel("Display name", { exact: true }).fill("Editing verification");
+  await form.getByLabel("Change reason", { exact: true }).fill("Verify audited product editing");
   await form.getByRole("button", { name: "Save product", exact: true }).click();
   await ap.getByRole("status").filter({ hasText: "Product saved" }).waitFor();
   await ap.reload();

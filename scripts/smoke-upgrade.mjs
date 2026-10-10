@@ -62,13 +62,13 @@ try {
   await post(user, "/api/demo/exchanges", { provider: "kraken", action: "disconnect" });
   const catalog = (await (await admin.request.get("/api/admin/products")).json()).catalog;
   const product = catalog.find(item => item.slug === "signals");
-  await post(admin, "/api/admin/products", { ...product, cost: product.cost + 1 });
+  await post(admin, "/api/admin/products", { ...product, cost: product.cost + 1, reason: "Verify product cost controls debit" });
   try {
     const result = await post(user, "/api/scans", { symbol: "ETHUSDT", interval: "15m", requestId: randomUUID() });
     assert.equal(result.cost, product.cost + 1, "Admin catalog cost must control debit");
   } finally {
     const current = (await (await admin.request.get("/api/admin/products")).json()).catalog.find(item => item.slug === "signals");
-    await post(admin, "/api/admin/products", { ...current, cost: product.cost });
+    await post(admin, "/api/admin/products", { ...current, cost: product.cost, reason: "Restore product cost after test" });
   }
   const page = await user.newPage();
   const errors = [];

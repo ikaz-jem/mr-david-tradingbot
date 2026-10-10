@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { ArrowUpRight, Menu } from "lucide-react";
 import { Brand } from "@/components/brand";
@@ -6,6 +7,7 @@ import { authOptions } from "@/lib/auth";
 
 export async function SiteHeader() {
   const session = await getServerSession(authOptions).catch((error) => {
+    unstable_rethrow(error);
     console.error("Public navigation could not load the current session.", error instanceof Error ? error.message : "Session unavailable");
     return null;
   });

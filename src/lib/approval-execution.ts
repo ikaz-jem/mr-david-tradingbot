@@ -119,3 +119,19 @@ export async function reconcilePendingApprovalOrders(userId: string) {
     } catch { /* Preserve uncertain state; reconciliation never resubmits an order. */ }
   }));
 }
+
+export async function reconcileApprovalOrder(orderId: string, userId: string) {
+  const order = await Order.findOne({ _id: orderId, userId, source: "approval", market: { $ne: "futures" }, status: { $in: ["intent", "unknown", "submitted", "partial"] } }).lean();
+  if (!order) throw new ApprovalExecutionError("This order is not eligible for Spot reconciliation.", 409);
+  if (!order.approvalUnlockId) throw new ApprovalExecutionError("This order is missing its Approval Desk execution record.", 409);
+  const provider = order.exchange.replace(/_spot$/, "") as ExchangeProviderId;
+  const connection = await ExchangeConnection.findOne({ userId, provider, market: "spot", environment: "live", status: "connected", access: "spot_trade" }).select("+apiKeyCiphertext +apiSecretCiphertext +apiPassphraseCiphertext userId provider market apiKeyVersion");
+  if (!connection) throw new ApprovalExecutionError(`The ${getExchangeProvider(provider).name} Spot connection is unavailable for reconciliation.`, 409);
+  try {
+    const result = await getSpotOrder({ provider, credentials: credentials(connection as Parameters<typeof credentials>[0]), symbol: order.symbol, clientOrderId: order.clientOrderId, orderId: order.exchangeOrderId });
+    return persistResult(String(order._id), String(order.approvalUnlockId), provider, result);
+  } catch (error) {
+    if (error instanceof SpotOrderError) throw new ApprovalExecutionError(error.message, error.status);
+    throw error;
+  }
+}

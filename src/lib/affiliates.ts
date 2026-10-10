@@ -1,13 +1,14 @@
 import { randomBytes } from "node:crypto";
 import mongoose, { type ClientSession } from "mongoose";
-import { AffiliateAccount, AffiliateCommission, AffiliateConfig, AffiliateConversion } from "@/models/Affiliate";
+import { AffiliateAccount, AffiliateCommission, AffiliateConfig, AffiliateConversion, AffiliatePayoutProfile } from "@/models/Affiliate";
 import { BillingPurchase } from "@/models/BillingPurchase";
 import { User } from "@/models/User";
 import { commissionMinor } from "@/lib/affiliate-policy";
+import { decryptAffiliatePayoutDetails } from "@/lib/affiliate-payout-crypto";
 
 export async function affiliateConfig(isDemo: boolean, session?: ClientSession) {
   const config = await AffiliateConfig.findOne({ key: isDemo ? "demo" : "global" }).session(session ?? null).lean();
-  return { enabled: config?.enabled ?? true, rates: config?.rates ?? [1000], cookieDays: config?.cookieDays ?? 30, holdDays: config?.holdDays ?? 14 };
+  return { enabled: config?.enabled ?? true, rewardType: config?.rewardType ?? "percentage", rates: config?.rates ?? [1000], fixedRewardsMinor: config?.fixedRewardsMinor ?? [500], fixedCurrency: config?.fixedCurrency ?? "USD", cookieDays: config?.cookieDays ?? 30, holdDays: config?.holdDays ?? 14 };
 }
 
 export async function ensureAffiliateAccount(userId: string, isDemo: boolean) {
@@ -16,28 +17,32 @@ export async function ensureAffiliateAccount(userId: string, isDemo: boolean) {
 }
 
 export async function initializeAffiliateLedger() {
-  await Promise.all([AffiliateAccount.init(), AffiliateCommission.init(), AffiliateConversion.init(), AffiliateConfig.init()]);
+  await Promise.all([AffiliateAccount.init(), AffiliateCommission.init(), AffiliateConversion.init(), AffiliateConfig.init(), AffiliatePayoutProfile.init()]);
 }
 
 // Called inside the verified payment transaction: purchase, credits, and commission commit together.
-export async function creditFirstPurchase(purchase: { _id: mongoose.Types.ObjectId; userId: mongoose.Types.ObjectId; expectedAmount: number; currency: string }, session: ClientSession) {
+export async function creditFirstPurchase(purchase: { _id: mongoose.Types.ObjectId; userId: mongoose.Types.ObjectId; kind: string; itemId: string; expectedAmount: number; currency: string }, session: ClientSession) {
   const buyer = await User.findById(purchase.userId).select("isDemo").session(session).lean();
   if (!buyer || buyer.isDemo) return;
+  if (purchase.kind !== "activation" || purchase.itemId !== "account_activation") return;
   if (await AffiliateConversion.exists({ buyerId: purchase.userId }).session(session)) return;
   // Existing paying accounts cannot qualify on a later refill after this feature is deployed.
   if (await BillingPurchase.exists({ userId: purchase.userId, status: "paid", _id: { $ne: purchase._id } }).session(session)) return;
   const config = await affiliateConfig(false, session);
-  await AffiliateConversion.create([{ buyerId: purchase.userId, purchaseId: purchase._id, isDemo: false, amountMinor: purchase.expectedAmount, currency: purchase.currency, rates: config.enabled ? config.rates : [] }], { session });
+  const rewards = config.rewardType === "fixed" ? config.fixedRewardsMinor : config.rates;
+  await AffiliateConversion.create([{ buyerId: purchase.userId, purchaseId: purchase._id, isDemo: false, amountMinor: purchase.expectedAmount, currency: purchase.currency, rates: config.enabled && config.rewardType === "percentage" ? config.rates : [], rewardType: config.rewardType, rewards: config.enabled ? rewards : [], rewardCurrency: config.rewardType === "fixed" ? config.fixedCurrency : purchase.currency }], { session });
   if (!config.enabled) return;
   let account = await AffiliateAccount.findOne({ userId: purchase.userId, isDemo: false }).session(session).lean();
   const seen = new Set([String(purchase.userId)]);
-  for (let index = 0; index < config.rates.length && account?.sponsorId; index++) {
+  for (let index = 0; index < rewards.length && account?.sponsorId; index++) {
     const beneficiaryId = account.sponsorId;
     if (seen.has(String(beneficiaryId))) break;
     seen.add(String(beneficiaryId));
     const eligible = await User.exists({ _id: beneficiaryId, status: "active", isDemo: false }).session(session);
-    const amountMinor = commissionMinor(purchase.expectedAmount, config.rates[index]);
-    if (eligible && amountMinor > 0) await AffiliateCommission.create([{ beneficiaryId, buyerId: purchase.userId, purchaseId: purchase._id, isDemo: false, level: index + 1, rateBps: config.rates[index], saleMinor: purchase.expectedAmount, amountMinor, currency: purchase.currency, availableAt: new Date(Date.now() + config.holdDays * 86400000) }], { session });
+    const rateBps = config.rewardType === "percentage" ? config.rates[index] ?? 0 : 0;
+    const amountMinor = config.rewardType === "percentage" ? commissionMinor(purchase.expectedAmount, rateBps) : config.fixedRewardsMinor[index] ?? 0;
+    const rewardCurrency = config.rewardType === "fixed" ? config.fixedCurrency : purchase.currency;
+    if (eligible && amountMinor > 0) await AffiliateCommission.create([{ beneficiaryId, buyerId: purchase.userId, purchaseId: purchase._id, isDemo: false, level: index + 1, rateBps, rewardType: config.rewardType, saleMinor: purchase.expectedAmount, saleCurrency: purchase.currency, amountMinor, currency: rewardCurrency, availableAt: new Date(Date.now() + config.holdDays * 86400000) }], { session });
     account = await AffiliateAccount.findOne({ userId: beneficiaryId, isDemo: false }).session(session).lean();
   }
 }
@@ -51,7 +56,7 @@ export async function referralSponsor(code: string | undefined) {
   return account.userId;
 }
 
-export async function affiliateReport(userId: string, isDemo: boolean, admin: boolean, page = 1) {
+export async function affiliateReport(userId: string, isDemo: boolean, admin: boolean, page = 1, includePayoutDetails = false) {
   const scope = admin ? { isDemo } : { isDemo, beneficiaryId: new mongoose.Types.ObjectId(userId) };
   const referralScope = admin ? { isDemo } : { isDemo, sponsorId: new mongoose.Types.ObjectId(userId) };
   const [config, account, rows, total, balances, referrals, referralCount] = await Promise.all([
@@ -66,14 +71,26 @@ export async function affiliateReport(userId: string, isDemo: boolean, admin: bo
   const users = await User.find({ _id: { $in: ids }, isDemo }).select("name email").lean();
   const names = new Map(users.map(user => [String(user._id), admin ? `${user.name} (${user.email})` : user.name]));
   const converted = await AffiliateConversion.find({ buyerId: { $in: referrals.map(row => row.userId) }, isDemo }).select("buyerId").lean();
+  const profileUserIds = [...new Set([...(admin ? rows.map(row => String(row.beneficiaryId)) : [userId])])];
+  const payoutProfiles = await AffiliatePayoutProfile.find({ userId: { $in: profileUserIds }, isDemo }).select("+detailsEncrypted").lean();
+  const payoutByUser = new Map(payoutProfiles.map(profile => {
+    const ownerId = String(profile.userId);
+    let details: Record<string, string> | undefined;
+    if (!admin || includePayoutDetails) {
+      try { details = decryptAffiliatePayoutDetails(ownerId, profile.detailsEncrypted); } catch { details = undefined; }
+    }
+    return [ownerId, { configured: true, method: profile.method, label: profile.label, maskedDestination: profile.maskedDestination, revision: profile.revision, details }];
+  }));
+  const ownPayoutProfile = payoutByUser.get(userId) ?? { configured: false, method: "external", label: "Not configured", maskedDestination: "", revision: 0 };
   return {
-    config, code: account!.code, page, total, referralCount, balances,
+    config, code: account!.code, page, total, referralCount, balances, payoutProfile: admin ? undefined : ownPayoutProfile,
     rows: rows.map(row => ({
       id: String(row._id), beneficiary: admin ? names.get(String(row.beneficiaryId)) ?? "Account" : "You",
       buyer: admin ? names.get(String(row.buyerId)) ?? "Account" : `Referral ${String(row.buyerId).slice(-6)}`,
-      level: row.level, rateBps: row.rateBps, amountMinor: row.amountMinor, saleMinor: row.saleMinor, currency: row.currency,
+      level: row.level, rateBps: row.rateBps, rewardType: row.rewardType ?? "percentage", amountMinor: row.amountMinor, saleMinor: row.saleMinor, saleCurrency: row.saleCurrency || row.currency, currency: row.currency,
       status: row.status === "earned" ? row.availableAt > new Date() ? "pending" : "available" : row.status,
-      createdAt: row.createdAt.toISOString(), availableAt: row.availableAt.toISOString(), payoutReference: row.payoutReference, reason: row.reason,
+      createdAt: row.createdAt.toISOString(), availableAt: row.availableAt.toISOString(), payoutReference: row.payoutReference, settlementChannel: row.settlementChannel || "", reason: row.reason,
+      payoutProfile: admin ? payoutByUser.get(String(row.beneficiaryId)) ?? { configured: false, method: "external", label: "Not configured", maskedDestination: "", revision: 0 } : undefined,
     })),
     referrals: referrals.map(row => ({
       id: String(row._id), name: admin ? `${names.get(String(row.userId)) ?? "Account"} · referred by ${names.get(String(row.sponsorId)) ?? "Account"}` : `Referral ${String(row.userId).slice(-6)}`,
