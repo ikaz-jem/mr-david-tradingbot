@@ -10,12 +10,12 @@ import { Signal } from "@/models/Signal";
 import { ScanRun } from "@/models/ScanRun";
 import type { ScanInterval } from "@/lib/scan-markets";
 import { getSharedClosedCandles, getSharedResearchDecision } from "@/lib/cached-research";
-import { getServiceConfig } from "@/lib/service-config";
+import { getAIServiceConfig } from "@/lib/service-config";
 import { getEnabledStrategies } from "@/lib/strategy-catalog";
 import { resolveStrategySelection } from "@/lib/strategy-selection";
 
 export async function runDemoScan(userId: string, symbol: string, interval: ScanInterval, strategySlug: string, requestId: string) {
-  const [config, service, strategies] = await Promise.all([getPlatformConfig(true), getServiceConfig(true), getEnabledStrategies(true, "signals")]);
+  const [config, service, strategies] = await Promise.all([getPlatformConfig(true), getAIServiceConfig("research", true), getEnabledStrategies(true, "signals")]);
   if (config.maintenanceMode) return NextResponse.json({ error: config.maintenanceMessage }, { status: 503 });
   if (!config.scansOpen || !config.allowedScanSymbols.includes(symbol)) return NextResponse.json({ error: config.scansPausedMessage }, { status: 503 });
   if (!service.openaiApiKey || !service.openaiModel) return NextResponse.json({ error: "Complete the AI provider configuration in Platform controls before running research." }, { status: 503 });

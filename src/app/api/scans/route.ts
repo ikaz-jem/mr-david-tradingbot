@@ -13,7 +13,7 @@ import { isSameOrigin } from "@/lib/request-origin";
 import { getPlatformConfig } from "@/lib/platform-config";
 import { notifyUser } from "@/lib/notifications";
 import { PLATFORM_CREDIT_ID } from "@/lib/credits";
-import { getServiceConfig } from "@/lib/service-config";
+import { getAIServiceConfig } from "@/lib/service-config";
 import { runDemoScan } from "@/lib/demo-scan";
 import { getProductCatalog } from "@/lib/product-catalog";
 import { accountEventEmail, sendEmail } from "@/lib/email";
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     if (config.maintenanceMode) return NextResponse.json({ error: config.maintenanceMessage }, { status: 503 });
     if (!config.scansOpen) return NextResponse.json({ error: config.scansPausedMessage }, { status: 503 });
     if (!config.allowedScanSymbols.includes(symbol)) return NextResponse.json({ error: "This pair is temporarily unavailable for research. No credit was charged." }, { status: 503 });
-    const [service, product, strategies] = await Promise.all([getServiceConfig(), getProductCatalog(false).then(items => items.find(item => item.slug === "signals")), getEnabledStrategies(false, "signals")]);
+    const [service, product, strategies] = await Promise.all([getAIServiceConfig("research"), getProductCatalog(false).then(items => items.find(item => item.slug === "signals")), getEnabledStrategies(false, "signals")]);
     if (!service.openaiApiKey || !service.openaiModel) return NextResponse.json({ error: "AI scanning is not configured yet." }, { status: 503 });
     if (!product?.enabled) return NextResponse.json({ error: "Trade research is temporarily unavailable." }, { status: 503 });
     if (!strategies.some(item => item.slug === strategySlug)) return NextResponse.json({ error: "Choose an available research strategy and try again." }, { status: 400 });

@@ -3,11 +3,12 @@ import { z } from "zod";
 import { connectDB } from "@/lib/db";
 import { workspaceActor } from "@/lib/workspace-access";
 import { isSameOrigin } from "@/lib/request-origin";
-import { encryptServiceSecret, getServiceConfig, getServiceConfigStatus, secretFields, serviceEncryptionReady, textFields } from "@/lib/service-config";
+import { encryptServiceSecret, getServiceConfig, getServiceConfigStatus, invalidateServiceConfigCache, secretFields, serviceEncryptionReady, textFields } from "@/lib/service-config";
 import { describeOpenAIModel, fallbackOpenAIModels, isSupportedResearchModel } from "@/lib/openai-model-catalog";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { ServiceConfig } from "@/models/ServiceConfig";
 import { OpenAIProviderHealthError, verifyOpenAIProvider } from "@/lib/openai-provider-health";
+import { SecurityAttempt } from "@/models/SecurityAttempt";
 
 export const runtime = "nodejs";
 const fields = [...secretFields, ...textFields] as const;
@@ -23,6 +24,13 @@ class OpenAIModelDiscoveryError extends Error {
 async function adminActor(permission: "settings:read" | "settings:update") {
   const actor = await workspaceActor();
   return actor?.organizationKind === "platform" && actor.can(permission) ? actor : null;
+}
+
+async function rateLimit(actorId: string) {
+  const bucket = Math.floor(Date.now() / 60_000);
+  const key = `service-config:${actorId}:${bucket}`;
+  const row = await SecurityAttempt.findOneAndUpdate({ key }, { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((bucket + 2) * 60_000) } }, { upsert: true, returnDocument: "after" });
+  return (row?.count ?? 0) <= 20;
 }
 
 export async function GET() {
@@ -56,12 +64,13 @@ export async function POST(request: Request) {
   const secret = secretFields.some(item => item === field);
   if (action === "set" && (secret ? value.length < 20 : !value || value.length > 160)) return NextResponse.json({ error: secret ? "Enter a complete provider credential (at least 20 characters)." : "Enter a valid setting value." }, { status: 400 });
   if (action === "set" && (field === "resendFromEmail" || field === "resendSupportEmail") && !/^(?:[^<>\r\n]{1,80}\s*<)?[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}>?$/.test(value)) return NextResponse.json({ error: "Enter a valid email address or sender name with an email address." }, { status: 400 });
-  if (action === "set" && field === "openaiModel" && !/^[A-Za-z0-9._-]{2,100}$/.test(value)) return NextResponse.json({ error: "Enter a valid model identifier." }, { status: 400 });
-  if (!serviceEncryptionReady()) return NextResponse.json({ error: "A strong NEXTAUTH_SECRET must be set at deployment before credentials can be stored." }, { status: 503 });
+  if (action === "set" && field.startsWith("openai") && field.endsWith("Model") && !/^[A-Za-z0-9._-]{2,100}$/.test(value)) return NextResponse.json({ error: "Enter a valid model identifier." }, { status: 400 });
+  if (!serviceEncryptionReady()) return NextResponse.json({ error: "Configure a valid SERVICE_CONFIG_ENCRYPTION_KEY or a strong NEXTAUTH_SECRET before credentials can be stored." }, { status: 503 });
   try {
     await connectDB();
     const actor = await adminActor("settings:update");
     if (!actor) return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+    if (!await rateLimit(actor.id)) return NextResponse.json({ error: "Too many sensitive provider changes. Wait one minute and retry." }, { status: 429 });
     const key = actor.isDemo ? "demo" : "global";
     let verifiedModels: string[] | null = null;
     if (field === "openaiApiKey" && action === "set") verifiedModels = await verifyOpenAIProvider(value);
@@ -71,20 +80,24 @@ export async function POST(request: Request) {
     const storedField = secret ? `${field}Encrypted` : field;
     const before = String(current[storedField as keyof typeof current] ?? "");
     const next = action === "clear" ? "" : secret ? encryptServiceSecret(value, field as (typeof secretFields)[number]) : value;
-    if (field === "openaiModel" && action === "set") {
+    if (field.startsWith("openai") && field.endsWith("Model") && action === "set") {
       const available = await verifyOpenAIProvider((await getServiceConfig(Boolean(actor.isDemo))).openaiApiKey);
       if (!available.includes(value)) return NextResponse.json({ error: "The selected model is not available to the configured OpenAI project." }, { status: 400 });
     }
     const audit = await AdminAuditEvent.create({ actorId: actor.id, targetType: "platform", targetId: "service-config", action: `${action}_${field}`, before: before ? "dashboard override present" : "no dashboard override", after: next ? "dashboard override present" : "dashboard override removed", reason });
     try {
       const health = field === "openaiApiKey" ? { openaiVerifiedAt: action === "set" ? new Date() : null, openaiLastError: "" } : {};
-      const model = verifiedModels && current.openaiModel && !verifiedModels.includes(current.openaiModel) ? { openaiModel: "" } : {};
+      const model = verifiedModels ? Object.fromEntries(["openaiModel", "openaiResearchModel", "openaiApprovalModel", "openaiAutopilotModel"].filter(modelField => {
+        const configured = String(current[modelField as keyof typeof current] ?? "");
+        return configured && !verifiedModels.includes(configured);
+      }).map(modelField => [modelField, ""])) : {};
       const updated = await ServiceConfig.updateOne({ _id: current._id, updatedAt: current.updatedAt }, { $set: { [storedField]: next, ...health, ...model } });
       if (updated.modifiedCount !== 1) {
         await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } });
         return NextResponse.json({ error: "Configuration changed concurrently. Refresh and retry." }, { status: 409 });
       }
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "applied" } });
+      invalidateServiceConfigCache(Boolean(actor.isDemo));
       return NextResponse.json({ ok: true, status: await getServiceConfigStatus(Boolean(actor.isDemo)) }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
       await AdminAuditEvent.updateOne({ _id: audit._id }, { $set: { status: "failed" } }).catch(() => undefined);

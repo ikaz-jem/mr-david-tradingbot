@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { getServiceConfig, recordOpenAIHealth } from "@/lib/service-config";
+import { getAIServiceConfig, recordOpenAIHealth } from "@/lib/service-config";
 import type { analyzeCandles } from "@/lib/scanner";
 import { enforceResearchDecision } from "@/lib/scan-ai-policy";
 
@@ -12,8 +12,8 @@ const narrativeSchema = z.object({
   riskNote: z.string().min(20).max(800),
 });
 
-export async function evaluateSetup(symbol: string, analysis: ReturnType<typeof analyzeCandles>, interval = "4h", settings?: Awaited<ReturnType<typeof getServiceConfig>>, strategy?: { requestedSlug: string; selectedSlug: string; selectedName: string; version: number }) {
-  const service = settings ?? await getServiceConfig();
+export async function evaluateSetup(symbol: string, analysis: ReturnType<typeof analyzeCandles>, interval = "4h", settings?: Awaited<ReturnType<typeof getAIServiceConfig>>, strategy?: { requestedSlug: string; selectedSlug: string; selectedName: string; version: number }) {
+  const service = settings ?? await getAIServiceConfig("research");
   if (!service.openaiApiKey || !service.openaiModel) throw new Error("AI provider is not configured");
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST", signal: AbortSignal.timeout(25000),

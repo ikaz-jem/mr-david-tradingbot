@@ -4,7 +4,7 @@ import type { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { getProductCatalog } from "@/lib/product-catalog";
 import { getPlatformConfig } from "@/lib/platform-config";
-import { getServiceConfig } from "@/lib/service-config";
+import { getAIServiceConfig } from "@/lib/service-config";
 import { getEnabledStrategies } from "@/lib/strategy-catalog";
 import { getSharedClosedCandles, getSharedResearchDecision } from "@/lib/cached-research";
 import { resolveStrategySelection } from "@/lib/strategy-selection";
@@ -87,7 +87,7 @@ export async function runApprovalDiscovery() {
     await expireApprovalOpportunities("live");
     const [config, service, product, preferences, strategies] = await Promise.all([
       getPlatformConfig(false),
-      getServiceConfig(false),
+      getAIServiceConfig("approval", false),
       getProductCatalog(false).then(items => items.find(item => item.slug === "approval-desk")),
       ApprovalPreference.find({ enabled: true }).lean(),
       getEnabledStrategies(false, "approval-desk"),

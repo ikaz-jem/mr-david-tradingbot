@@ -15,11 +15,24 @@ export class ApprovalExecutionError extends Error {
   constructor(message: string, status = 409) { super(message); this.name = "ApprovalExecutionError"; this.status = status; }
 }
 
+type RecordedApprovalExecution = {
+  state: string;
+  status: SpotOrderResult["status"] | FuturesOrderResult["status"];
+  orderId: string;
+  clientOrderId: string;
+  executedQuantity: number;
+  cumulativeQuoteQuantity: number;
+  averageFillPrice: number | null;
+  protectionStatus?: FuturesOrderResult["protectionStatus"];
+};
+
+export type ApprovalExecutionResult = RecordedApprovalExecution & { duplicate: boolean };
+
 function clientOrderId(unlockId: string) { return `env${unlockId.slice(-6)}${Date.now().toString(36).slice(-5)}${randomBytes(2).toString("hex")}`; }
 function mappedState(status: SpotOrderResult["status"]) { return status === "FILLED" ? "filled" : status === "PARTIALLY_FILLED" ? "partial" : status === "CANCELED" ? "cancelled" : status === "REJECTED" ? "rejected" : "submitted"; }
 function unlockStatus(status: SpotOrderResult["status"]) { return status === "FILLED" ? "exchange_filled" : status === "PARTIALLY_FILLED" ? "exchange_partial" : status === "CANCELED" ? "exchange_cancelled" : status === "REJECTED" ? "exchange_rejected" : "exchange_pending"; }
 
-async function persistResult(orderId: string, approvalUnlockId: string, provider: ExchangeProviderId, result: SpotOrderResult) {
+async function persistResult(orderId: string, approvalUnlockId: string, provider: ExchangeProviderId, result: SpotOrderResult): Promise<RecordedApprovalExecution> {
   const executedQuantity = Number(result.executedQty) || 0;
   const cumulativeQuoteQuantity = Number(result.cumulativeQuoteQty) || 0;
   const averageFillPrice = executedQuantity > 0 ? cumulativeQuoteQuantity / executedQuantity : null;
@@ -42,7 +55,7 @@ function credentials(connection: { apiKeyCiphertext: string; apiSecretCiphertext
   };
 }
 
-async function persistFuturesResult(orderId: string, approvalUnlockId: string, provider: ExchangeProviderId, input: { amountUsdt: number; config: FuturesExecutionConfig }, result: FuturesOrderResult) {
+async function persistFuturesResult(orderId: string, approvalUnlockId: string, provider: ExchangeProviderId, input: { amountUsdt: number; config: FuturesExecutionConfig }, result: FuturesOrderResult): Promise<RecordedApprovalExecution> {
   const filledQuantity = Number(result.executedQty) || 0;
   const state = result.protectionStatus === "failed" ? "protection_failed" : result.status === "FILLED" ? "filled" : result.status === "PARTIALLY_FILLED" ? "partial" : "submitted";
   await Promise.all([
@@ -52,7 +65,7 @@ async function persistFuturesResult(orderId: string, approvalUnlockId: string, p
   return { state, status: result.status, orderId: result.entryOrderId, clientOrderId: result.clientOrderId, executedQuantity: filledQuantity, cumulativeQuoteQuantity: 0, averageFillPrice: result.averageFillPrice, protectionStatus: result.protectionStatus };
 }
 
-export async function executeApprovalOnExchange(input: { provider: ExchangeProviderId; market?: ExchangeMarket; userId: string; approvalUnlockId: string; opportunityId: string; symbol: string; side: "BUY" | "SELL"; amountUsdt: number; referencePrice: number; stopPrice?: number; targetPrice?: number; futuresConfig?: FuturesExecutionConfig }) {
+export async function executeApprovalOnExchange(input: { provider: ExchangeProviderId; market?: ExchangeMarket; userId: string; approvalUnlockId: string; opportunityId: string; symbol: string; side: "BUY" | "SELL"; amountUsdt: number; referencePrice: number; stopPrice?: number; targetPrice?: number; futuresConfig?: FuturesExecutionConfig }): Promise<ApprovalExecutionResult> {
   await Order.init();
   const market = input.market ?? "spot"; const requiredAccess = market === "futures" ? "futures_trade" : "spot_trade";
   const connection = await ExchangeConnection.findOne({ userId: input.userId, provider: input.provider, market, environment: "live", status: "connected", access: requiredAccess }).select("+apiKeyCiphertext +apiSecretCiphertext +apiPassphraseCiphertext userId provider market apiKeyVersion");

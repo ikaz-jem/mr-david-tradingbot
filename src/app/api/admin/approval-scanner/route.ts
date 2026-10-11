@@ -16,7 +16,7 @@ export async function GET() {
   if (actor?.organizationKind !== "platform" || !actor.can("settings:read")) return NextResponse.json({ error: "Scanner read permission required." }, { status: 403 });
   if (actor.isDemo) return NextResponse.json({ demo: true, canRun: false, job: null });
   const [job, catalog, config, service] = await Promise.all([ApprovalScanJob.findOne({ key: "approval-discovery:live" }).select("status startedAt completedAt leaseUntil combinations opportunitiesCreated eligibleUsers lastError outcomes").lean(), getProductCatalog(false), getPlatformConfig(false), getServiceConfigStatus(false)]);
-  const aiReady = service.openaiApiKey && Boolean(service.openaiModel) && Boolean(service.openaiVerifiedAt) && !service.openaiLastError;
+  const aiReady = service.openaiApiKey && Boolean(service.openaiApprovalModel) && Boolean(service.openaiVerifiedAt) && !service.openaiLastError;
   const cronConfigured = Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16 && !process.env.CRON_SECRET.startsWith("replace-"));
   return NextResponse.json({ demo: false, canRun: actor.can("settings:update"), cronConfigured, aiReady, aiError: service.openaiLastError, productEnabled: Boolean(catalog.find(item => item.slug === "approval-desk")?.enabled), operationsOpen: !config.maintenanceMode && config.scansOpen && config.approvalDiscoveryOpen, job }, { headers: { "Cache-Control": "no-store" } });
 }
