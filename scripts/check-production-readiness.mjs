@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+
 const errors = [];
 const warnings = [];
 
@@ -40,9 +42,22 @@ if (encryptionKey) {
     errors.push("EXCHANGE_ENCRYPTION_KEY must be valid base64");
   }
 }
-if (!process.env.ALLOWED_COUNTRIES?.trim()) warnings.push("ALLOWED_COUNTRIES is empty; global access policy is not restricted");
+if (!process.env.ALLOWED_COUNTRIES?.trim()) errors.push("ALLOWED_COUNTRIES is required; live billing and exchange operations fail closed without it");
 if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) warnings.push("Resend environment fallback is not configured; verify encrypted admin service configuration before opening registration");
+if ((process.env.RESEND_API_KEY || process.env.RESEND_FROM_EMAIL) && !process.env.RESEND_WEBHOOK_SECRET) warnings.push("RESEND_WEBHOOK_SECRET is missing; delivery, bounce, and complaint reconciliation is incomplete");
 if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) warnings.push("OpenAI environment fallback is not configured; verify encrypted admin service configuration before enabling scans");
+
+if (!existsSync("vercel.json")) errors.push("vercel.json is missing; scheduled discovery and Autopilot will not deploy");
+else {
+  try {
+    const vercel = JSON.parse(readFileSync("vercel.json", "utf8"));
+    if (!Array.isArray(vercel.crons) || !vercel.crons.some(job => job.path === "/api/internal/approval-scan")) errors.push("vercel.json does not schedule /api/internal/approval-scan");
+    if (!Array.isArray(vercel.crons) || !vercel.crons.some(job => job.path === "/api/internal/autopilot")) errors.push("vercel.json does not schedule /api/internal/autopilot");
+    if (!Array.isArray(vercel.crons) || !vercel.crons.some(job => job.path === "/api/internal/trade-tracking")) errors.push("vercel.json does not schedule /api/internal/trade-tracking");
+  } catch { errors.push("vercel.json is not valid JSON"); }
+}
+
+if (process.env.EXCHANGE_EXECUTION_CERTIFIED !== "true") warnings.push("EXCHANGE_EXECUTION_CERTIFIED is not true; live Approval Desk and Autopilot execution remain safely locked until staging certification is complete");
 
 if (process.env.BILLING_LIVE_ENABLED === "true") {
   for (const name of ["PAYSTACK_LIVE_SECRET_KEY", "PAYSTACK_CURRENCY", "PAYSTACK_ALLOWED_COUNTRIES"]) required(name);

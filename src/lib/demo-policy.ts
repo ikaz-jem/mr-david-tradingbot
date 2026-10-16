@@ -9,7 +9,7 @@ export function demoAdminPageAllowed(path: string) {
 export function demoAdminApiAllowed(path: string) {
   if (path === "/api/admin/payment-gateways") return true;
   if (path === "/api/admin/affiliates") return true;
-  return ["/api/admin/access", "/api/admin/controls", "/api/admin/service-config", "/api/admin/products", "/api/admin/strategies", "/api/admin/notifications", "/api/admin/billing/adjust", "/api/admin/emails/test"].includes(path) || /^\/api\/admin\/users\/[a-f0-9]{24}\/(access|preview)$/.test(path) || /^\/api\/admin\/signals\/[a-f0-9]{24}\/moderate$/.test(path);
+  return ["/api/admin/access", "/api/admin/autopilot", "/api/admin/controls", "/api/admin/service-config", "/api/admin/products", "/api/admin/strategies", "/api/admin/notifications", "/api/admin/billing/adjust", "/api/admin/emails/test"].includes(path) || /^\/api\/admin\/users\/[a-f0-9]{24}\/(access|preview)$/.test(path) || /^\/api\/admin\/signals\/[a-f0-9]{24}\/moderate$/.test(path);
 }
 export function isShowcaseAccount(email: string) {
   return ["demo-user@enrivea.invalid", "demo-admin@enrivea.invalid"].includes(email);

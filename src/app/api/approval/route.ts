@@ -22,12 +22,15 @@ import { SharedOpportunity } from "@/models/SharedOpportunity";
 import { User } from "@/models/User";
 import { approvalDiscoveryStatus } from "@/lib/approval-discovery-status";
 import { reconcileApprovalPositions } from "@/lib/approval-reconciliation";
-import { ApprovalExecutionError, executeApprovalOnExchange, reconcilePendingApprovalOrders } from "@/lib/approval-execution";
+import { ApprovalExecutionError, executeApprovalOnExchange } from "@/lib/approval-execution";
 import { resolveEffectivePermissions, writeSecurityAudit } from "@/lib/access-control";
 import { ExchangeConnection } from "@/models/ExchangeConnection";
 import { approvalExecutionAccess } from "@/lib/approval-execution-policy";
 import { exchangeProviderIds, getExchangeProvider } from "@/lib/exchange-catalog";
 import { futuresCapabilities } from "@/lib/exchange-futures-policy";
+import { regulatedAccess } from "@/lib/jurisdiction-policy";
+import { SecurityAttempt } from "@/models/SecurityAttempt";
+import { Order } from "@/models/Order";
 
 export const runtime = "nodejs";
 const objectId = z.string().regex(/^[a-f\d]{24}$/i);
@@ -43,8 +46,18 @@ const input = z.discriminatedUnion("action", [
 async function currentUser() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return null;
-  const user = await User.findOne({ _id: session.user.id, status: "active" }).select("_id isDemo activatedAt creditBalance").lean();
+  const user = await User.findOne({ _id: session.user.id, status: "active" }).select("_id isDemo activatedAt creditBalance countryCode").lean();
   return user ? { session, user, scope: (user.isDemo ? "demo" : "live") as "demo" | "live" } : null;
+}
+
+async function allowExecutionAttempt(userId: string) {
+  const bucket = Math.floor(Date.now() / 60_000);
+  const row = await SecurityAttempt.findOneAndUpdate(
+    { key: `exchange-order:${userId}:${bucket}` },
+    { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((bucket + 2) * 60_000) } },
+    { upsert: true, returnDocument: "after" },
+  );
+  return (row?.count ?? 0) <= 5;
 }
 
 async function serializeState(userId: string, isDemo: boolean, message?: string) {
@@ -52,7 +65,6 @@ async function serializeState(userId: string, isDemo: boolean, message?: string)
   if (isDemo) { await ensureDemoWorkspace(userId); await seedDemoApprovalOpportunities(userId); }
   await expireApprovalOpportunities(scope);
   if (!isDemo && (await getPlatformConfig(false)).paperReconciliationOpen) await reconcileApprovalPositions(userId);
-  if (!isDemo) await reconcilePendingApprovalOrders(userId);
   const preference = await ensureApprovalPreference(userId);
   const [catalog, allStrategies, platform, wallet, unlocks, scanJob, tradingConnections] = await Promise.all([
     getProductCatalog(isDemo),
@@ -75,17 +87,22 @@ async function serializeState(userId: string, isDemo: boolean, message?: string)
   ] };
   const opportunities = await SharedOpportunity.find(opportunityQuery).sort({ createdAt: -1 }).limit(100).lean();
   const interactionByOpportunity = new Map(unlocks.map(item => [String(item.opportunityId), item]));
+  const trackedOrders = isDemo || !unlocks.length ? [] : await Order.find({ userId, approvalUnlockId: { $in: unlocks.map(item => item._id) }, source: "approval" }).select("_id approvalUnlockId market trackingStatus trackingError lastTrackedAt netPnl pnlComplete realizedPnl unrealizedPnl feesQuote fundingQuote markPrice averageFillPrice positionQuantity").lean();
+  const trackedByUnlock = new Map(trackedOrders.map(order => [String(order.approvalUnlockId), order]));
   const openSymbols = [...new Set(unlocks.filter(item => item.status === "paper_open").map(item => String(opportunities.find(opp => String(opp._id) === String(item.opportunityId))?.symbol ?? "")).filter(Boolean))];
   const marks = new Map<string, number>();
   await Promise.all(openSymbols.map(async symbol => { try { const opportunity = opportunities.find(item => item.symbol === symbol); marks.set(symbol, isDemo && opportunity ? opportunity.entry * 1.008 : await latestClosedPrice(symbol)); } catch {} }));
   const rows = opportunities.flatMap(opportunity => {
     const interaction = interactionByOpportunity.get(String(opportunity._id));
+    const tracked = interaction ? trackedByUnlock.get(String(interaction._id)) : null;
     const metrics = calculateTradeMetrics(opportunity.side, opportunity.entry, opportunity.stop, opportunity.target, interaction?.amountUsdt || preference!.defaultNotionalUsdt);
     if (!interaction && (opportunity.confidence < preference!.minConfidence || metrics.riskReward < preference!.minRiskReward)) return [];
     const unlocked = Boolean(interaction && interaction.creditCost > 0);
-    const markPrice = interaction?.status === "paper_open" ? marks.get(opportunity.symbol) ?? interaction.markPrice ?? interaction.executionPrice ?? opportunity.entry : interaction?.markPrice ?? null;
-    const pnl = interaction?.status === "paper_open" && markPrice ? calculatePositionPnl(opportunity.side, interaction.executionPrice || opportunity.entry, markPrice, interaction.amountUsdt) : { pnlUsdt: interaction?.pnlUsdt ?? null, pnlPct: interaction?.pnlPct ?? null };
-    return [{ id: String(opportunity._id), symbol: opportunity.symbol, interval: opportunity.interval, side: opportunity.side, strategyName: opportunity.strategyName, strategySlug: opportunity.strategySlug, confidence: opportunity.confidence, summary: unlocked ? opportunity.summary : `${opportunity.side === "BUY" ? "Long" : "Short"} candidate. Unlock to inspect the research and trade levels.`, status: interaction?.status === "unlocked" && opportunity.status !== "active" ? "expired" : interaction?.status ?? "locked", unlocked, unlockCost: product?.cost ?? 0, createdAt: opportunity.createdAt.toISOString(), expiresAt: opportunity.expiresAt.toISOString(), dataCutoff: opportunity.dataCutoff.toISOString(), ...(unlocked ? { entry: opportunity.entry, stop: opportunity.stop, target: opportunity.target, thesis: opportunity.thesis, riskNote: opportunity.riskNote, invalidationDirection: opportunity.invalidationDirection, invalidationPrice: opportunity.invalidationPrice, invalidationInstruction: opportunity.invalidationInstruction, amountUsdt: interaction?.amountUsdt || preference!.defaultNotionalUsdt, metrics, executionPrice: interaction?.executionPrice ?? null, markPrice, exitPrice: interaction?.exitPrice ?? null, pnlUsdt: pnl.pnlUsdt, pnlPct: pnl.pnlPct, decidedAt: interaction?.decidedAt?.toISOString() ?? null, closedAt: interaction?.closedAt?.toISOString() ?? null, exchangeProvider: interaction?.exchangeProvider ?? null, exchangeMarket: interaction?.exchangeMarket ?? "spot", exchangeOrderId: interaction?.exchangeOrderId ?? null, exchangeClientOrderId: interaction?.exchangeClientOrderId ?? null, exchangeOrderStatus: interaction?.exchangeOrderStatus ?? null, executedQuantity: interaction?.executedQuantity ?? null, executedQuoteQuantity: interaction?.executedQuoteQuantity ?? null, leverage: interaction?.leverage ?? null, marginMode: interaction?.marginMode ?? null, stopOrderId: interaction?.stopOrderId ?? null, targetOrderId: interaction?.targetOrderId ?? null, protectionStatus: interaction?.protectionStatus ?? null } : {}) }];
+    const trackFresh = tracked?.lastTrackedAt && Date.now() - tracked.lastTrackedAt.getTime() < 180_000;
+    const dataUsable = trackFresh || tracked?.trackingStatus === "closed" && tracked.pnlComplete;
+    const markPrice = interaction?.status === "paper_open" ? marks.get(opportunity.symbol) ?? interaction.markPrice ?? interaction.executionPrice ?? opportunity.entry : tracked?.market === "futures" ? trackFresh ? tracked.markPrice : null : interaction?.markPrice ?? null;
+    const pnl = interaction?.status === "paper_open" && markPrice ? calculatePositionPnl(opportunity.side, interaction.executionPrice || opportunity.entry, markPrice, interaction.amountUsdt) : tracked?.market === "futures" ? { pnlUsdt: dataUsable && tracked.pnlComplete && tracked.netPnl != null ? Number(tracked.netPnl) : null, pnlPct: dataUsable && tracked.pnlComplete && tracked.netPnl != null && interaction?.amountUsdt ? Number(tracked.netPnl) / interaction.amountUsdt * 100 : null } : { pnlUsdt: interaction?.pnlUsdt ?? null, pnlPct: interaction?.pnlPct ?? null };
+    return [{ id: String(opportunity._id), symbol: opportunity.symbol, interval: opportunity.interval, side: opportunity.side, strategyName: opportunity.strategyName, strategySlug: opportunity.strategySlug, confidence: opportunity.confidence, summary: unlocked ? opportunity.summary : `${opportunity.side === "BUY" ? "Long" : "Short"} candidate. Unlock to inspect the research and trade levels.`, status: interaction?.status === "unlocked" && opportunity.status !== "active" ? "expired" : interaction?.status ?? "locked", unlocked, unlockCost: product?.cost ?? 0, createdAt: opportunity.createdAt.toISOString(), expiresAt: opportunity.expiresAt.toISOString(), dataCutoff: opportunity.dataCutoff.toISOString(), ...(unlocked ? { entry: opportunity.entry, stop: opportunity.stop, target: opportunity.target, thesis: opportunity.thesis, riskNote: opportunity.riskNote, invalidationDirection: opportunity.invalidationDirection, invalidationPrice: opportunity.invalidationPrice, invalidationInstruction: opportunity.invalidationInstruction, amountUsdt: interaction?.amountUsdt || preference!.defaultNotionalUsdt, metrics, executionPrice: tracked?.market === "futures" ? tracked.averageFillPrice ?? null : interaction?.executionPrice ?? null, markPrice, exitPrice: interaction?.exitPrice ?? null, pnlUsdt: pnl.pnlUsdt, pnlPct: pnl.pnlPct, trackingStatus: tracked?.trackingStatus ?? null, trackingError: tracked?.trackingError ?? null, lastTrackedAt: tracked?.lastTrackedAt?.toISOString() ?? null, pnlComplete: tracked?.pnlComplete ?? null, feesQuote: tracked?.feesQuote ?? null, fundingQuote: tracked?.fundingQuote ?? null, decidedAt: interaction?.decidedAt?.toISOString() ?? null, closedAt: interaction?.closedAt?.toISOString() ?? null, exchangeProvider: interaction?.exchangeProvider ?? null, exchangeMarket: interaction?.exchangeMarket ?? "spot", exchangeOrderId: interaction?.exchangeOrderId ?? null, exchangeClientOrderId: interaction?.exchangeClientOrderId ?? null, exchangeOrderStatus: interaction?.exchangeOrderStatus ?? null, executedQuantity: interaction?.executedQuantity ?? null, executedQuoteQuantity: interaction?.executedQuoteQuantity ?? null, leverage: interaction?.leverage ?? null, marginMode: interaction?.marginMode ?? null, stopOrderId: interaction?.stopOrderId ?? null, targetOrderId: interaction?.targetOrderId ?? null, protectionStatus: interaction?.protectionStatus ?? null } : {}) }];
   });
   const executionProviders = exchangeProviderIds.map(id => { const spot = tradingConnections.some(connection => connection.provider === id && connection.market === "spot" && connection.access === "spot_trade"); const futures = tradingConnections.some(connection => connection.provider === id && connection.market === "futures" && connection.access === "futures_trade"); const capability = futuresCapabilities[id]; return { id, name: getExchangeProvider(id).name, spotEnabled: spot, futuresEnabled: futures, futures: { maxLeverage: capability.maxLeverage, marginModes: capability.marginModes, triggerPriceTypes: capability.triggerPriceTypes } }; }).filter(item => item.spotEnabled || item.futuresEnabled);
   return { ok: true, message, discovery: approvalDiscoveryStatus({ operationsOpen: !platform.maintenanceMode && platform.scansOpen && platform.approvalDiscoveryOpen, productEnabled: Boolean(product?.enabled), preferenceEnabled: preference!.enabled, demo: isDemo, cadenceMinutes: platform.approvalScanCadenceMinutes, job: scanJob }), operations: { open: !platform.maintenanceMode && platform.approvalDiscoveryOpen, message: platform.maintenanceMode ? platform.maintenanceMessage : platform.approvalPausedMessage }, product: { enabled: Boolean(product?.enabled), cost: product?.cost ?? 0 }, wallet, preferences: { enabled: preference!.enabled, symbols: effectiveSymbols, intervals: effectiveIntervals, strategySlugs: effectiveStrategySlugs, minConfidence: preference!.minConfidence, minRiskReward: preference!.minRiskReward, defaultNotionalUsdt: preference!.defaultNotionalUsdt, revision: preference!.revision }, strategies: strategies.map(item => ({ slug: item.slug, name: item.name, description: item.description, experimental: item.experimental })), supported: { symbols: platform.approvalScanSymbols, intervals: platform.approvalScanIntervals }, opportunities: rows, execution: { providers: executionProviders }, scanner: { status: isDemo ? "simulation" : scanJob?.status ?? "waiting", lastRunAt: scanJob?.completedAt?.toISOString() ?? null, combinations: scanJob?.combinations ?? 0, created: scanJob?.opportunitiesCreated ?? 0 } };
@@ -159,22 +176,31 @@ export async function POST(request: Request) {
     const definition = getExchangeProvider(parsed.data.provider);
     const market = parsed.data.market;
     const expectedConfirmation = market === "futures" ? "EXECUTE FUTURES" : "EXECUTE";
+    const permissionActor = await resolveEffectivePermissions(userId);
+    if (!await allowExecutionAttempt(userId)) {
+      await writeSecurityAudit({ actor: permissionActor, action: "exchange.order.denied", resource: "orders", targetType: "rate-limit", targetId: userId, outcome: "denied", reason: "More than five live execution attempts in one minute", request }).catch(() => undefined);
+      return NextResponse.json({ error: "Too many live-order attempts. Wait one minute, inspect the exchange, and retry." }, { status: 429 });
+    }
+    const jurisdiction = regulatedAccess({ isDemo, countryCode: actor.user.countryCode, action: "exchange_execution" });
+    if (!jurisdiction.allowed) {
+      await writeSecurityAudit({ actor: permissionActor, action: "exchange.order.denied", resource: "orders", targetType: "jurisdiction", targetId: actor.user.countryCode ?? "unverified", outcome: "denied", reason: jurisdiction.reason, request }).catch(() => undefined);
+      return NextResponse.json({ error: jurisdiction.reason }, { status: jurisdiction.status });
+    }
     const executionConnection = isDemo ? null : await ExchangeConnection.findOne({ userId, provider: parsed.data.provider, market, environment: "live", status: "connected" }).select("access").lean();
     const access = approvalExecutionAccess({ authenticated: true, active: true, isDemo, ownsUnlock: Boolean(interaction), requestedMarket: market, explicitlyConfirmed: parsed.data.confirmation === expectedConfirmation, operationsOpen: operations.exchangeConnectionsOpen && !operations.maintenanceMode, connectionAccess: executionConnection?.access ?? null });
     if (!access.allowed) return NextResponse.json({ error: access.reason === "Exchange execution is currently paused." ? operations.exchangeConnectionsPausedMessage : access.reason }, { status: access.status });
     if (interaction.status !== "unlocked" && interaction.status !== "exchange_pending") return NextResponse.json({ error: "This setup already has an execution decision." }, { status: 409 });
     const validity = await validateOpportunityNow(opportunity);
     if (!validity.valid) return NextResponse.json({ error: validity.reason }, { status: 409 });
-    const actor = await resolveEffectivePermissions(userId);
     try {
       const futuresConfig = market === "futures" ? { leverage: parsed.data.leverage ?? 1, marginMode: parsed.data.marginMode ?? "isolated", positionMode: "one_way" as const, triggerPriceType: parsed.data.triggerPriceType ?? "mark" } : undefined;
       const result = await executeApprovalOnExchange({ provider: parsed.data.provider, market, userId, approvalUnlockId: String(interaction._id), opportunityId: String(opportunity._id), symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt, referencePrice: validity.markPrice ?? opportunity.entry, stopPrice: opportunity.stop, targetPrice: opportunity.target, futuresConfig });
       const protectionStatus = result.protectionStatus;
-      await writeSecurityAudit({ actor, action: "exchange.order.execute", resource: "orders", targetType: "ApprovalUnlock", targetId: String(interaction._id), previousValue: { status: interaction.status }, newValue: { provider: parsed.data.provider, market, symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt, leverage: futuresConfig?.leverage, marginMode: futuresConfig?.marginMode, orderId: result.orderId, status: result.status, protectionStatus }, outcome: "success", reason: `User explicitly confirmed live ${definition.name} ${market} execution`, request });
+      await writeSecurityAudit({ actor: permissionActor, action: "exchange.order.execute", resource: "orders", targetType: "ApprovalUnlock", targetId: String(interaction._id), previousValue: { status: interaction.status }, newValue: { provider: parsed.data.provider, market, symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt, leverage: futuresConfig?.leverage, marginMode: futuresConfig?.marginMode, orderId: result.orderId, status: result.status, protectionStatus }, outcome: "success", reason: `User explicitly confirmed live ${definition.name} ${market} execution`, request });
       const label = result.state === "filled" ? "filled" : result.state === "partial" ? "partially filled" : "accepted";
       return NextResponse.json(await serializeState(userId, false, `${definition.name} ${market === "futures" ? "Futures position" : "Spot order"} ${label}. Order ${result.orderId}.`));
     } catch (error) {
-      await writeSecurityAudit({ actor, action: "exchange.order.execute", resource: "orders", targetType: "ApprovalUnlock", targetId: String(interaction._id), previousValue: { status: interaction.status }, newValue: { provider: parsed.data.provider, market, symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt }, outcome: "failed", reason: error instanceof Error ? error.message : "Exchange execution failed", request }).catch(() => undefined);
+      await writeSecurityAudit({ actor: permissionActor, action: "exchange.order.execute", resource: "orders", targetType: "ApprovalUnlock", targetId: String(interaction._id), previousValue: { status: interaction.status }, newValue: { provider: parsed.data.provider, market, symbol: opportunity.symbol, side: opportunity.side, amountUsdt: parsed.data.amountUsdt }, outcome: "failed", reason: error instanceof Error ? error.message : "Exchange execution failed", request }).catch(() => undefined);
       if (error instanceof ApprovalExecutionError) return NextResponse.json({ error: error.message }, { status: error.status });
       console.error("Approval Desk exchange execution failed", error);
       return NextResponse.json({ error: `The exchange order could not be completed. Check ${definition.name} before retrying.` }, { status: 503 });

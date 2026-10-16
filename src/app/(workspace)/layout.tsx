@@ -15,7 +15,12 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const user = await User.findById(session.user.id).select("name role status isDemo settings").lean();
   if (!user || user.status !== "active") redirect("/login");
   const config = await getPlatformConfig(Boolean(user.isDemo));
-  const [unreadNotifications, access] = await Promise.all([Notification.countDocuments({ userId: user._id, readAt: null }), resolveEffectivePermissions(session.user.id)]);
+  const [unreadNotifications, latestNotifications, access] = await Promise.all([
+    Notification.countDocuments({ userId: user._id, readAt: null }),
+    Notification.find({ userId: user._id }).sort({ createdAt: -1 }).limit(6).select("kind title body href readAt createdAt").lean(),
+    resolveEffectivePermissions(session.user.id),
+  ]);
+  const notificationPreviews = latestNotifications.map(item => ({ id: String(item._id), kind: item.kind, title: item.title, body: item.body, href: item.href ?? null, readAt: item.readAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString() }));
   const preferenceClasses = `${user.settings?.compactMode ? " workspace-compact" : ""}${user.settings?.reducedMotion ? " workspace-reduced-motion" : ""}`;
-  return <div className={`workspace-experience${preferenceClasses}`}><WorkspaceShell name={user.name} role={user.role} permissions={access?.permissions ?? []} isDemo={user.isDemo} unreadNotifications={unreadNotifications}>{config.maintenanceMode && <div role="alert" className="mb-5 rounded-xl border border-[#a96855] bg-[#2b1712] px-4 py-3 text-sm font-semibold text-[#ffc0ae]"><b>Maintenance mode:</b> {config.maintenanceMessage}{user.role !== "user" && <span className="ml-1 text-[#efc16f]">Operator controls remain available.</span>}</div>}{config.announcement && <div className="mb-5 rounded-xl border border-[#8c7244] bg-[#3b2b16] px-4 py-3 text-sm font-semibold text-[#ffe0a6]">Platform notice: {config.announcement}</div>}{children}</WorkspaceShell></div>;
+  return <div className={`workspace-experience${preferenceClasses}`}><WorkspaceShell name={user.name} role={user.role} permissions={access?.permissions ?? []} isDemo={user.isDemo} unreadNotifications={unreadNotifications} notifications={notificationPreviews}>{config.maintenanceMode && <div role="alert" className="mb-5 rounded-xl border border-[#a96855] bg-[#2b1712] px-4 py-3 text-sm font-semibold text-[#ffc0ae]"><b>Maintenance mode:</b> {config.maintenanceMessage}{user.role !== "user" && <span className="ml-1 text-[#efc16f]">Operator controls remain available.</span>}</div>}{config.announcement && <div className="mb-5 rounded-xl border border-[#8c7244] bg-[#3b2b16] px-4 py-3 text-sm font-semibold text-[#ffe0a6]">Platform notice: {config.announcement}</div>}{children}</WorkspaceShell></div>;
 }

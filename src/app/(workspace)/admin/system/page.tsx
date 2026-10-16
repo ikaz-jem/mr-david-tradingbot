@@ -1,4 +1,4 @@
-import { Activity, Database, KeyRound, Server, WalletCards } from "lucide-react";
+import { Activity, Bot, Database, KeyRound, Server, WalletCards } from "lucide-react";
 import { connectDB } from "@/lib/db";
 import { CreditEntry } from "@/models/CreditEntry";
 import { ScanRun } from "@/models/ScanRun";
@@ -15,6 +15,9 @@ import { getGateway, gatewayReady } from "@/lib/payment-gateways";
 import { notFound } from "next/navigation";
 import { workspaceActor } from "@/lib/workspace-access";
 import { DemoSystemHealth } from "@/components/demo-system-health";
+import { AutopilotJob } from "@/models/AutopilotJob";
+import { AutopilotProfile } from "@/models/AutopilotProfile";
+import { AutopilotExecution } from "@/models/AutopilotExecution";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +28,7 @@ export default async function SystemPage() {
   if (actor.isDemo) return <DemoSystemHealth/>;
   const users = await User.find({ isDemo: { $ne: true } }).sort({ createdAt: -1 }).limit(100).select("creditBalance").lean();
   const demoIds = (await User.find({ isDemo: true }).select("_id").lean()).map(user => user._id);
-  const [ledger, staleJobs, sentEmails, emailFailures, paystackCheckouts, paystackReviews, liveReviews, controls, servicesStatus] = await Promise.all([
+  const [ledger, staleJobs, sentEmails, emailFailures, paystackCheckouts, paystackReviews, liveReviews, controls, servicesStatus, autopilotJob, armedProfiles, autopilotAttention] = await Promise.all([
     CreditEntry.aggregate<{ _id: string; balance: number }>([
       { $match: { userId: { $in: users.map(user => user._id) } } },
       { $group: { _id: "$userId", balance: { $sum: "$amount" } } },
@@ -38,18 +41,23 @@ export default async function SystemPage() {
     BillingPurchase.countDocuments({ isDemo: { $ne: true }, status: "review" }),
     getPlatformConfig(),
     getServiceConfigStatus(),
+    AutopilotJob.findOne({ key: "autopilot:live" }).select("status completedAt lastError").lean(),
+    AutopilotProfile.countDocuments({ status: "running" }),
+    AutopilotExecution.countDocuments({ status: { $in: ["protection_failed", "submitted"] }, protectionStatus: { $ne: "active" } }),
   ]);
   const ledgerByUser = new Map(ledger.map(row => [String(row._id), row.balance]));
   const gateways = await Promise.all([getGateway("paystack", false), getGateway("nowpayments", false)]);
   const mismatches = users.filter(user => (user.creditBalance ?? 0) !== (ledgerByUser.get(String(user._id)) ?? 0)).length;
   const services = [
     { name: "MongoDB", detail: "Product database connected", ready: true, icon: Database },
-    { name: "Market feed", detail: "Public Binance URL configured; no live probe here", ready: Boolean(process.env.BINANCE_DATA_BASE_URL), icon: Activity },
+    { name: "Market feed", detail: "Public Binance market-data origin is configured; run a scan or deployment probe to certify connectivity", ready: Boolean(process.env.BINANCE_DATA_BASE_URL), icon: Activity },
     { name: "AI provider", detail: "Key and model required before scans can run", ready: Boolean(servicesStatus.openaiApiKey && servicesStatus.openaiModel), icon: Server },
     { name: "Resend email", detail: "Verified sender and API key required for account email", ready: Boolean(servicesStatus.resendApiKey && servicesStatus.resendFromEmail && process.env.APP_URL), icon: Server },
     ...gateways.map(gateway => ({ name: gateway.provider === "paystack" ? "Paystack checkout" : "USDT BEP20 checkout", detail: "Manage credentials and availability in Platform controls / Payments. Configuration is not a live connectivity check.", ready: gateway.enabled && gatewayReady(gateway), icon: WalletCards })),
-    { name: "Read-only exchange connections", detail: "Binance Spot key verification and encrypted storage; no orders", ready: exchangeEncryptionReady(), icon: KeyRound },
-    { name: "Exchange order service", detail: "Order permissions, approval controls, and reconciliation pending", ready: false, icon: KeyRound },
+    { name: "Approval Desk scheduler", detail: "Vercel invokes the protected shared scanner every five minutes", ready: Boolean(process.env.CRON_SECRET), icon: Activity },
+    { name: "Autopilot worker", detail: `${armedProfiles} armed profile(s); latest worker ${autopilotJob?.status ?? "not started"}${autopilotAttention ? `; ${autopilotAttention} execution(s) need attention` : ""}`, ready: Boolean(process.env.CRON_SECRET) && process.env.EXCHANGE_EXECUTION_CERTIFIED === "true" && autopilotAttention === 0 && autopilotJob?.status !== "failed", icon: Bot },
+    { name: "Encrypted exchange connections", detail: "Per-user Spot and Futures credentials are verified, encrypted, owner-scoped, and audited", ready: exchangeEncryptionReady(), icon: KeyRound },
+    { name: "Exchange order service", detail: "Spot and Futures adapters, explicit confirmation, protection orders, and reconciliation are implemented; staging certification is still required", ready: exchangeEncryptionReady() && process.env.EXCHANGE_EXECUTION_CERTIFIED === "true", icon: KeyRound },
   ];
   return <><PageIntro eyebrow="Operations / infrastructure" title="System health" description="Configuration and product-data checks for the services needed to operate safely."/>
     <div className="grid gap-4 lg:grid-cols-2">{services.map(service => <div key={service.name} className="surface flex items-center gap-4 rounded-[18px] p-5"><span className="flex size-11 items-center justify-center rounded-xl bg-[#c5ff4117] text-accent"><service.icon className="size-5"/></span><div className="flex-1"><h2 className="text-sm font-bold">{service.name}</h2><p className="mt-1 text-xs text-muted">{service.detail}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${service.ready ? "bg-[#c5ff4117] text-accent" : "bg-[#ffcf7015] text-[#f2ca82]"}`}>{service.ready ? "Configured" : "Pending"}</span></div>)}</div>

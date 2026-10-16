@@ -6,11 +6,12 @@ const orderSchema = new Schema({
   approvalUnlockId: { type: Schema.Types.ObjectId, ref: "ApprovalUnlock", default: null, index: true },
   opportunityId: { type: Schema.Types.ObjectId, ref: "SharedOpportunity", default: null, index: true },
   connectionId: { type: Schema.Types.ObjectId, ref: "ExchangeConnection", default: null },
-  source: { type: String, enum: ["signal", "approval"], default: "signal", index: true },
+  source: { type: String, enum: ["signal", "approval", "autopilot"], default: "signal", index: true },
   exchange: { type: String, enum: ["binance_spot", "bybit_spot", "okx_spot", "kraken_spot", "kucoin_spot", "binance_futures", "bybit_futures", "okx_futures", "kraken_futures", "kucoin_futures"], required: true },
   market: { type: String, enum: ["spot", "futures"], default: "spot", index: true },
   clientOrderId: { type: String, required: true, unique: true },
   activeKey: { type: String },
+  positionGuardKey: { type: String },
   exchangeOrderId: { type: String, default: null },
   symbol: { type: String, required: true },
   side: { type: String, enum: ["BUY", "SELL"], required: true },
@@ -31,6 +32,26 @@ const orderSchema = new Schema({
   averageFillPrice: { type: Number, min: 0, default: null },
   feeAmount: { type: String, default: "0" },
   feeAsset: { type: String, default: null },
+  trackingStatus: { type: String, enum: ["pending", "current", "stale", "unsupported", "attribution_uncertain", "closed"], default: "pending", index: true },
+  trackingError: { type: String, default: null, maxlength: 300 },
+  lastTrackedAt: { type: Date, default: null },
+  nextTrackAt: { type: Date, default: Date.now, index: true },
+  trackLeaseUntil: { type: Date, default: null },
+  trackLeaseId: { type: String, default: null },
+  trackAttempts: { type: Number, default: 0 },
+  positionQuantity: { type: String, default: null },
+  markPrice: { type: Number, default: null },
+  realizedPnl: { type: String, default: null },
+  unrealizedPnl: { type: String, default: null },
+  feesQuote: { type: String, default: null },
+  fundingQuote: { type: String, default: null },
+  lastFundingAt: { type: Date, default: null },
+  lastAccountTradeId: { type: String, default: null },
+  lastAccountSyncAt: { type: Date, default: null },
+  accountHistoryComplete: { type: Boolean, default: false },
+  netPnl: { type: String, default: null },
+  pnlComplete: { type: Boolean, default: false },
+  closedAt: { type: Date, default: null },
   errorCode: { type: String, default: null },
   errorMessage: { type: String, default: null, maxlength: 300 },
   resolvedAt: { type: Date, default: null },
@@ -38,5 +59,7 @@ const orderSchema = new Schema({
 
 orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ activeKey: 1 }, { unique: true, sparse: true });
+orderSchema.index({ positionGuardKey: 1 }, { unique: true, sparse: true });
+orderSchema.index({ market: 1, trackingStatus: 1, nextTrackAt: 1 });
 export type OrderRecord = InferSchemaType<typeof orderSchema>;
 export const Order = (mongoose.models.Order as Model<OrderRecord> | undefined) ?? mongoose.model<OrderRecord>("Order", orderSchema);

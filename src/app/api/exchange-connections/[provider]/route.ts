@@ -14,6 +14,8 @@ import { ExchangeConnectionEvent } from "@/models/ExchangeConnectionEvent";
 import { User } from "@/models/User";
 import { resolveEffectivePermissions, writeSecurityAudit } from "@/lib/access-control";
 import { exchangeMarkets, type ExchangeMarket } from "@/lib/exchange-futures-policy";
+import { regulatedAccess } from "@/lib/jurisdiction-policy";
+import { SecurityAttempt } from "@/models/SecurityAttempt";
 
 export const runtime = "nodejs";
 const input = z.object({
@@ -33,7 +35,7 @@ async function currentUser() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return null;
   await connectDB();
-  return User.findOne({ _id: session.user.id, status: "active" }).select("_id isDemo").lean();
+  return User.findOne({ _id: session.user.id, status: "active" }).select("_id isDemo countryCode").lean();
 }
 
 function marketFrom(request: Request): ExchangeMarket {
@@ -42,6 +44,16 @@ function marketFrom(request: Request): ExchangeMarket {
 
 function credentialContext(userId: string, provider: string, market: ExchangeMarket, field: string) {
   return market === "spot" ? `${userId}:${provider}:${field}` : `${userId}:${provider}:futures:${field}`;
+}
+
+async function allowConnectionAttempt(userId: string) {
+  const bucket = Math.floor(Date.now() / 60_000);
+  const row = await SecurityAttempt.findOneAndUpdate(
+    { key: `exchange-connect:${userId}:${bucket}` },
+    { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((bucket + 2) * 60_000) } },
+    { upsert: true, returnDocument: "after" },
+  );
+  return (row?.count ?? 0) <= 5;
 }
 
 export async function GET(request: Request, context: { params: Promise<{ provider: string }> }) {
@@ -65,6 +77,17 @@ export async function POST(request: Request, context: { params: Promise<{ provid
   const user = await currentUser();
   if (!user) return reply({ error: "Sign in first." }, 401);
   if (user.isDemo) return reply({ error: "Demo accounts cannot store real exchange credentials." }, 403);
+  const jurisdiction = regulatedAccess({ isDemo: false, countryCode: user.countryCode, action: "exchange_connection" });
+  if (!jurisdiction.allowed) {
+    const deniedActor = await resolveEffectivePermissions(String(user._id));
+    await writeSecurityAudit({ actor: deniedActor, action: "exchange.connection.denied", resource: "exchange-connections", targetType: "jurisdiction", targetId: user.countryCode ?? "unverified", outcome: "denied", reason: jurisdiction.reason, request }).catch(() => undefined);
+    return reply({ error: jurisdiction.reason }, jurisdiction.status);
+  }
+  if (!await allowConnectionAttempt(String(user._id))) {
+    const deniedActor = await resolveEffectivePermissions(String(user._id));
+    await writeSecurityAudit({ actor: deniedActor, action: "exchange.connection.denied", resource: "exchange-connections", targetType: "rate-limit", targetId: String(user._id), outcome: "denied", reason: "More than five credential verification attempts in one minute", request }).catch(() => undefined);
+    return reply({ error: "Too many exchange verification attempts. Wait one minute and retry." }, 429);
+  }
   const operations = await getPlatformConfig();
   if (operations.maintenanceMode) return reply({ error: operations.maintenanceMessage }, 503);
   if (!operations.exchangeConnectionsOpen) return reply({ error: operations.exchangeConnectionsPausedMessage }, 503);

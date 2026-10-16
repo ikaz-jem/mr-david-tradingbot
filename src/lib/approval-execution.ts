@@ -8,6 +8,9 @@ import { ApprovalUnlock } from "@/models/ApprovalUnlock";
 import { ExchangeConnection } from "@/models/ExchangeConnection";
 import { Order } from "@/models/Order";
 import { FuturesOrderError, placeFuturesBracketOrder, type FuturesOrderResult } from "@/lib/exchange-futures-orders";
+import { getBinanceFuturesExposure } from "@/lib/binance-tracking";
+import { requireTradeTrackingIndexes } from "@/lib/trade-indexes";
+import { decimalUnits } from "@/lib/trade-decimal";
 import type { ExchangeMarket, FuturesExecutionConfig } from "@/lib/exchange-futures-policy";
 
 export class ApprovalExecutionError extends Error {
@@ -65,17 +68,23 @@ async function persistFuturesResult(orderId: string, approvalUnlockId: string, p
   return { state, status: result.status, orderId: result.entryOrderId, clientOrderId: result.clientOrderId, executedQuantity: filledQuantity, cumulativeQuoteQuantity: 0, averageFillPrice: result.averageFillPrice, protectionStatus: result.protectionStatus };
 }
 
-export async function executeApprovalOnExchange(input: { provider: ExchangeProviderId; market?: ExchangeMarket; userId: string; approvalUnlockId: string; opportunityId: string; symbol: string; side: "BUY" | "SELL"; amountUsdt: number; referencePrice: number; stopPrice?: number; targetPrice?: number; futuresConfig?: FuturesExecutionConfig }): Promise<ApprovalExecutionResult> {
+export async function executeApprovalOnExchange(input: { provider: ExchangeProviderId; market?: ExchangeMarket; source?: "approval" | "autopilot"; userId: string; approvalUnlockId: string; opportunityId: string; symbol: string; side: "BUY" | "SELL"; amountUsdt: number; referencePrice: number; stopPrice?: number; targetPrice?: number; futuresConfig?: FuturesExecutionConfig }): Promise<ApprovalExecutionResult> {
   await Order.init();
-  const market = input.market ?? "spot"; const requiredAccess = market === "futures" ? "futures_trade" : "spot_trade";
+  const market = input.market ?? "spot"; const source = input.source ?? "approval"; const requiredAccess = market === "futures" ? "futures_trade" : "spot_trade";
   const connection = await ExchangeConnection.findOne({ userId: input.userId, provider: input.provider, market, environment: "live", status: "connected", access: requiredAccess }).select("+apiKeyCiphertext +apiSecretCiphertext +apiPassphraseCiphertext userId provider market apiKeyVersion");
   const definition = getExchangeProvider(input.provider);
   if (!connection) throw new ApprovalExecutionError(`Connect ${definition.name} with ${market === "futures" ? "Futures" : "Spot"} execution access before placing this order.`, 409);
   if (market === "futures" && (!input.futuresConfig || !input.stopPrice || !input.targetPrice)) throw new ApprovalExecutionError("Futures execution requires validated leverage, margin mode, stop-loss, and take-profit.", 400);
-  if (await Order.countDocuments({ userId: input.userId, source: "approval", createdAt: { $gt: new Date(Date.now() - 60_000) } }) >= 5) throw new ApprovalExecutionError("Too many live-order attempts. Wait one minute and try again.", 429);
-  const activeKey = `approval:${input.approvalUnlockId}`;
+  if (await Order.countDocuments({ userId: input.userId, createdAt: { $gt: new Date(Date.now() - 60_000) } }) >= 5) throw new ApprovalExecutionError("Too many live-order attempts. Wait one minute and try again.", 429);
+  const activeKey = `${source}:${input.approvalUnlockId}`;
   const existing = await Order.findOne({ activeKey }).lean();
   const key = credentials(connection as Parameters<typeof credentials>[0]);
+  if (market === "futures") {
+    await requireTradeTrackingIndexes();
+    if (input.provider !== "binance") throw new ApprovalExecutionError("Live position tracking is not certified for this Futures exchange yet.", 503);
+    const exposure = await getBinanceFuturesExposure(key, input.symbol);
+    if (decimalUnits(exposure) !== 0n) throw new ApprovalExecutionError("This exchange account already holds a position in this market. Close or manage it at Binance before opening a platform trade.", 409);
+  }
   if (existing) {
     const existingProvider = existing.exchange.replace(/_(spot|futures)$/, "") as ExchangeProviderId;
     if (existingProvider !== input.provider || existing.market !== market) throw new ApprovalExecutionError(`This setup already has a ${getExchangeProvider(existingProvider).name} ${existing.market} order. It cannot be submitted again.`, 409);
@@ -90,27 +99,31 @@ export async function executeApprovalOnExchange(input: { provider: ExchangeProvi
   }
   let order;
   try {
-    order = await Order.create({ userId: input.userId, connectionId: connection._id, approvalUnlockId: input.approvalUnlockId, opportunityId: input.opportunityId, source: "approval", exchange: `${input.provider}_${market}`, market, symbol: input.symbol, side: input.side, quoteAmount: market === "spot" ? input.amountUsdt : input.amountUsdt * (input.futuresConfig?.leverage ?? 1), marginAmount: market === "futures" ? input.amountUsdt : null, leverage: input.futuresConfig?.leverage ?? null, marginMode: input.futuresConfig?.marginMode ?? null, positionMode: input.futuresConfig?.positionMode ?? null, stopPrice: input.stopPrice ?? null, targetPrice: input.targetPrice ?? null, protectionStatus: market === "futures" ? "pending" : "not_applicable", clientOrderId: clientOrderId(input.approvalUnlockId), activeKey, status: "intent" });
+    order = await Order.create({ userId: input.userId, connectionId: connection._id, approvalUnlockId: input.approvalUnlockId, opportunityId: input.opportunityId, source, exchange: `${input.provider}_${market}`, market, symbol: input.symbol, side: input.side, quoteAmount: market === "spot" ? input.amountUsdt : input.amountUsdt * (input.futuresConfig?.leverage ?? 1), marginAmount: market === "futures" ? input.amountUsdt : null, leverage: input.futuresConfig?.leverage ?? null, marginMode: input.futuresConfig?.marginMode ?? null, positionMode: input.futuresConfig?.positionMode ?? null, stopPrice: input.stopPrice ?? null, targetPrice: input.targetPrice ?? null, protectionStatus: market === "futures" ? "pending" : "not_applicable", clientOrderId: clientOrderId(input.approvalUnlockId), activeKey, ...(market === "futures" ? { positionGuardKey: String(connection._id) + ":" + input.symbol } : {}), status: "intent" });
   } catch (error) {
-    if ((error as { code?: number }).code === 11000) throw new ApprovalExecutionError("This setup already has a live order in progress.", 409);
+    if ((error as { code?: number }).code === 11000) throw new ApprovalExecutionError("This setup or market already has a live order in progress.", 409);
     throw error;
   }
+  let submissionAttempted = false;
   try {
     if (market === "futures") {
+      submissionAttempted = true;
       const result = await placeFuturesBracketOrder({ provider: input.provider, credentials: key, symbol: input.symbol, side: input.side, marginAmountUsdt: input.amountUsdt, referencePrice: input.referencePrice, stopPrice: input.stopPrice!, targetPrice: input.targetPrice!, clientOrderId: order.clientOrderId, config: input.futuresConfig! });
       const recorded = await persistFuturesResult(String(order._id), input.approvalUnlockId, input.provider, { amountUsdt: input.amountUsdt, config: input.futuresConfig! }, result);
-      await notifyUser({ userId: input.userId, kind: "exchange", title: `${input.symbol} Futures position accepted`, body: `${definition.name} accepted the ${input.futuresConfig!.leverage}x position with exchange-side stop-loss and take-profit.`, href: "/dashboard/approval", sourceKey: `${input.provider}-futures:${result.entryOrderId}` }).catch(() => undefined);
+      await notifyUser({ userId: input.userId, kind: "exchange", title: `${input.symbol} Futures position accepted`, body: `${definition.name} accepted the ${input.futuresConfig!.leverage}x position with exchange-side stop-loss and take-profit.`, href: source === "autopilot" ? "/dashboard/autopilot" : "/dashboard/approval", sourceKey: `${input.provider}-futures:${result.entryOrderId}` }).catch(() => undefined);
       return { duplicate: false, ...recorded };
     }
+    submissionAttempted = true;
     const result = await placeSpotMarketOrder({ provider: input.provider, credentials: key, symbol: input.symbol, side: input.side, quoteAmount: input.amountUsdt, referencePrice: input.referencePrice, clientOrderId: order.clientOrderId });
     const recorded = await persistResult(String(order._id), input.approvalUnlockId, input.provider, result);
-    await notifyUser({ userId: input.userId, kind: "exchange", title: `${input.symbol} Spot order ${result.status.toLowerCase().replaceAll("_", " ")}`, body: `${input.side} order ${result.orderId} was accepted by ${definition.name}.`, href: "/dashboard/approval", sourceKey: `${input.provider}-order:${result.orderId}` }).catch(() => undefined);
+    await notifyUser({ userId: input.userId, kind: "exchange", title: `${input.symbol} Spot order ${result.status.toLowerCase().replaceAll("_", " ")}`, body: `${input.side} order ${result.orderId} was accepted by ${definition.name}.`, href: source === "autopilot" ? "/dashboard/autopilot" : "/dashboard/approval", sourceKey: `${input.provider}-order:${result.orderId}` }).catch(() => undefined);
     return { duplicate: false, ...recorded };
   } catch (error) {
-    const uncertain = (error instanceof SpotOrderError || error instanceof FuturesOrderError) && error.executionUnknown;
+    const adapterError = error instanceof SpotOrderError || error instanceof FuturesOrderError;
+    const uncertain = adapterError ? error.executionUnknown : submissionAttempted;
     const partial = error instanceof FuturesOrderError ? error.partialResult : undefined;
     const protectionFailed = Boolean(partial?.entryOrderId);
-    await Order.updateOne({ _id: order._id }, { $set: { status: protectionFailed ? "protection_failed" : uncertain ? "unknown" : "rejected", exchangeOrderId: partial?.entryOrderId ?? null, stopOrderId: partial?.stopOrderId ?? null, targetOrderId: partial?.targetOrderId ?? null, protectionStatus: protectionFailed ? "failed" : market === "futures" ? "pending" : "not_applicable", errorMessage: error instanceof Error ? error.message.slice(0, 300) : "Order failed", resolvedAt: uncertain || protectionFailed ? null : new Date() }, ...(uncertain || protectionFailed ? {} : { $unset: { activeKey: 1 } }) });
+    await Order.updateOne({ _id: order._id }, { $set: { status: protectionFailed ? "protection_failed" : uncertain ? "unknown" : "rejected", exchangeOrderId: partial?.entryOrderId ?? null, stopOrderId: partial?.stopOrderId ?? null, targetOrderId: partial?.targetOrderId ?? null, protectionStatus: protectionFailed ? "failed" : market === "futures" ? "pending" : "not_applicable", errorMessage: error instanceof Error ? error.message.slice(0, 300) : "Order failed", resolvedAt: uncertain || protectionFailed ? null : new Date() }, ...(uncertain || protectionFailed ? {} : { $unset: { activeKey: 1, positionGuardKey: 1 } }) });
     if (uncertain || protectionFailed) await ApprovalUnlock.updateOne({ _id: input.approvalUnlockId, status: "unlocked" }, { $set: { status: "exchange_pending", exchangeProvider: input.provider, exchangeMarket: market, exchangeOrderId: partial?.entryOrderId ?? null, exchangeClientOrderId: order.clientOrderId, exchangeOrderStatus: protectionFailed ? "PROTECTION_FAILED" : "UNKNOWN", protectionStatus: protectionFailed ? "failed" : null, stopOrderId: partial?.stopOrderId ?? null, targetOrderId: partial?.targetOrderId ?? null, amountUsdt: input.amountUsdt, leverage: input.futuresConfig?.leverage ?? null, marginMode: input.futuresConfig?.marginMode ?? null, decidedAt: new Date(), executionNote: protectionFailed ? `${definition.name} accepted the entry but protective orders are incomplete. Immediate exchange-side action is required.` : `${definition.name} response was uncertain; duplicate execution is blocked until reconciled.` } });
     throw new ApprovalExecutionError(error instanceof Error ? error.message : `${definition.name} could not place the order.`, error instanceof SpotOrderError || error instanceof FuturesOrderError ? error.status : 503);
   }

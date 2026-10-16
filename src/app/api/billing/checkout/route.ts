@@ -9,6 +9,8 @@ import { getAccountCreditState } from "@/lib/credits";
 import { BillingPurchase } from "@/models/BillingPurchase";
 import { User } from "@/models/User";
 import { isSameOrigin } from "@/lib/request-origin";
+import { regulatedAccess } from "@/lib/jurisdiction-policy";
+import { writeSecurityAudit } from "@/lib/access-control";
 
 const schema = z.object({ kind: z.enum(["activation", "topup"]), itemId: z.string().min(2).max(40), provider: z.enum(["paystack", "nowpayments"]).default("paystack"), payCurrency: z.string().regex(/^[a-z0-9]{2,30}$/).default("usdtbsc") });
 export async function POST(request: Request) {
@@ -20,11 +22,16 @@ export async function POST(request: Request) {
   const { kind, itemId, provider, payCurrency } = parsed.data;
   let reference = "";
   try {
-    const [platform, gateway, account, user] = await Promise.all([getPlatformConfig(actor.isDemo), getGateway(provider, actor.isDemo), getAccountCreditState(actor.id), User.findById(actor.id).select("email emailVerifiedAt").lean()]);
+    const [platform, gateway, account, user] = await Promise.all([getPlatformConfig(actor.isDemo), getGateway(provider, actor.isDemo), getAccountCreditState(actor.id), User.findById(actor.id).select("email emailVerifiedAt countryCode").lean()]);
     if (!platform.billingOpen || platform.maintenanceMode) return NextResponse.json({ error: platform.maintenanceMode ? platform.maintenanceMessage : platform.billingPausedMessage }, { status: 503 });
     if (!gateway.enabled || !gatewayReady(gateway)) return NextResponse.json({ error: "This payment method is unavailable." }, { status: 503 });
     if (!actor.isDemo && (!user?.emailVerifiedAt || gateway.mode !== "live")) return NextResponse.json({ error: "Verify your email before paying." }, { status: 403 });
     if (actor.isDemo && gateway.mode === "live") return NextResponse.json({ error: "Demo accounts cannot make live payments." }, { status: 403 });
+    const jurisdiction = regulatedAccess({ isDemo: actor.isDemo, countryCode: user?.countryCode, action: "billing" });
+    if (!jurisdiction.allowed) {
+      await writeSecurityAudit({ actor, action: "billing.checkout.denied", resource: "billing", targetType: "jurisdiction", targetId: user?.countryCode ?? "unverified", outcome: "denied", reason: jurisdiction.reason, request }).catch(() => undefined);
+      return NextResponse.json({ error: jurisdiction.reason }, { status: jurisdiction.status });
+    }
     const pack = platform.creditPacks.find(row => row.id === itemId && row.enabled);
     if (kind === "activation" && (itemId !== "account_activation" || !platform.activationOpen || account.activated)) return NextResponse.json({ error: "Activation is unavailable or already complete." }, { status: 409 });
     if (kind === "topup" && (!pack || !account.activated)) return NextResponse.json({ error: "Activate your account and choose an available credit pack." }, { status: 409 });

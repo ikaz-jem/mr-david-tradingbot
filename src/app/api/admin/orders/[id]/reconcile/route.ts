@@ -6,7 +6,7 @@ import { isSameOrigin } from "@/lib/request-origin";
 import { connectDB } from "@/lib/db";
 import { consumeAdminMutationLimit } from "@/lib/admin-mutation-limit";
 import { writeSecurityAudit } from "@/lib/access-control";
-import { ApprovalExecutionError, reconcileApprovalOrder } from "@/lib/approval-execution";
+import { trackOneOrder } from "@/lib/trade-tracking";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { Order } from "@/models/Order";
 import { User } from "@/models/User";
@@ -34,13 +34,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!owner) return NextResponse.json({ error: "Order not found." }, { status: 404 });
   const before = { status: order.status, exchangeOrderId: order.exchangeOrderId, filledQuantity: order.filledQuantity, filledQuoteAmount: order.filledQuoteAmount };
   try {
-    const result = await reconcileApprovalOrder(id, String(owner._id));
+    const result = await trackOneOrder(id, String(owner._id));
     await AdminAuditEvent.create({ actorId: actor.id, targetUserId: owner._id, targetType: "platform", targetId: id, action: "reconcile_order", before: JSON.stringify(before), after: JSON.stringify(result), reason: parsed.data.reason, status: "applied" });
     await writeSecurityAudit({ actor, action: "orders.reconcile", resource: "orders", targetType: "Order", targetId: id, previousValue: before, newValue: result, outcome: "success", reason: parsed.data.reason, request }).catch(() => undefined);
-    return NextResponse.json({ ok: true, status: result.state });
+    return NextResponse.json({ ok: result.state !== "stale" && result.state !== "busy", status: result.state, ...(result.state === "stale" ? { error: "Exchange tracking needs attention. Check the order status before acting." } : {}) }, { status: result.state === "stale" ? 503 : result.state === "busy" ? 409 : 200 });
   } catch (error) {
     await writeSecurityAudit({ actor, action: "orders.reconcile", resource: "orders", targetType: "Order", targetId: id, previousValue: before, outcome: "failed", reason: parsed.data.reason, request, metadata: { error: error instanceof Error ? error.message : "unknown" } }).catch(() => undefined);
-    const status = error instanceof ApprovalExecutionError ? error.status : 503;
-    return NextResponse.json({ error: error instanceof ApprovalExecutionError ? error.message : "Exchange reconciliation is temporarily unavailable." }, { status });
+    return NextResponse.json({ error: "Exchange reconciliation is temporarily unavailable." }, { status: 503 });
   }
 }
