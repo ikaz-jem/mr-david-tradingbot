@@ -9,6 +9,7 @@ type Gateway = { provider: string; enabled: boolean; ready: boolean; mode: strin
 type Coin = { code: string; name: string; network: string; iconUrl?: string };
 type Data = {
   isDemo: boolean;
+  accountEmail: string;
   account: { balance: number; activated: boolean };
   config: { activationOpen: boolean; activationPriceMinor: number; activationCredits: number; creditPacks: { id: string; label: string; credits: number; priceMinor: number; enabled: boolean }[]; billingOpen: boolean; message: string };
   gateways: Gateway[];
@@ -22,6 +23,7 @@ export function PaymentBillingConsole() {
   const [method, setMethod] = useState("paystack");
   const [coins, setCoins] = useState<Coin[]>([]);
   const [payCurrency, setPayCurrency] = useState("usdtbsc");
+  const [paymentEmail, setPaymentEmail] = useState("");
   const [coinError, setCoinError] = useState("");
   const [coinLoading, setCoinLoading] = useState(true);
   const [coinPickerOpen, setCoinPickerOpen] = useState(false);
@@ -33,7 +35,7 @@ export function PaymentBillingConsole() {
   useEffect(() => {
     fetch("/api/billing/methods", { cache: "no-store" })
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error); return result as Data; })
-      .then(result => { setData(result); setMethod(result.gateways.find(row => row.enabled && row.ready)?.provider || "paystack"); })
+      .then(result => { setData(result); setPaymentEmail(result.accountEmail); setMethod(result.gateways.find(row => row.enabled && row.ready)?.provider || "paystack"); })
       .catch(error => setError(error instanceof Error ? error.message : "Billing is unavailable."));
   }, []);
 
@@ -66,7 +68,7 @@ export function PaymentBillingConsole() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, itemId, provider: method, payCurrency }) });
+      const response = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, itemId, provider: method, payCurrency, ...(method === "paystack" && gateway?.mode !== "demo" ? { paymentEmail } : {}) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       if (!/^\/dashboard\/checkout\/enrivea-[a-f0-9]{32}$/.test(result.url)) throw new Error("Invalid checkout destination");
@@ -141,6 +143,12 @@ export function PaymentBillingConsole() {
               </label>;
             })}
           </div>
+          {method === "paystack" && gateway?.mode !== "demo" && <div className="mt-5 border-t border-line pt-5">
+            <div className="flex items-center justify-between gap-2"><label htmlFor="paystack-payment-email" className="text-xs font-bold uppercase tracking-widest text-muted">Payment email</label>{paymentEmail !== data.accountEmail && <button type="button" onClick={() => setPaymentEmail(data.accountEmail)} className="text-xs font-semibold text-accent hover:underline">Use account email</button>}</div>
+            <input id="paystack-payment-email" type="email" autoComplete="email" maxLength={254} required value={paymentEmail} onChange={event => setPaymentEmail(event.target.value)} placeholder="you@example.com" className="mt-2 w-full rounded-xl border border-line bg-black/20 px-4 py-3 text-sm outline-none focus:border-accent/60"/>
+            <p className="mt-2 text-xs leading-relaxed text-muted">Your account email is selected by default. You can use another email you control for this Paystack payment; your credits and receipt still belong to this account.</p>
+            {data.isDemo && gateway?.mode === "test" && <p className="mt-2 text-xs text-amber-200">The shared demo login uses a placeholder address. Replace it with a real email for Paystack test checkout.</p>}
+          </div>}
           {method === "nowpayments" && <div className="mt-5 border-t border-line pt-5" ref={pickerRef} onKeyDown={event => { if (event.key === "Escape") setCoinPickerOpen(false); }}>
             <label className="text-xs font-bold uppercase tracking-widest text-muted">Currency & network</label>
             <div className="relative mt-2">
@@ -156,7 +164,7 @@ export function PaymentBillingConsole() {
             <p className="mt-2 text-xs leading-relaxed text-muted">The exact crypto amount and payment address appear at checkout. Always use the selected network.</p>
             {coinError && <p role="alert" className="mt-2 text-xs text-red-300">{coinError}</p>}
           </div>}
-          {data.isDemo && <div className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-200">Shared demo account: payments are simulated. Sign in with your own account to make a live payment.</div>}
+          {data.isDemo && <div className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-200">Shared demo account: simulation and provider test payments affect demo credits only. No live payment can be made here.</div>}
         </section>
       </div>
 

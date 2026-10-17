@@ -13,5 +13,5 @@ export async function GET() {
     getPlatformConfig(actor.isDemo), getAccountCreditState(actor.id),
     BillingPurchase.find({ userId: actor.id }).sort({ createdAt: -1 }).limit(30).select("reference provider mode kind credits expectedAmount currency status createdAt").lean(),
   ]);
-  return NextResponse.json({ gateways: gateways.map(publicGateway), config: { activationOpen: config.activationOpen, activationPriceMinor: config.activationPriceMinor, activationCredits: config.activationCredits, creditPacks: config.creditPacks, billingOpen: config.billingOpen && !config.maintenanceMode, message: config.maintenanceMode ? config.maintenanceMessage : config.billingPausedMessage }, account, purchases, isDemo: actor.isDemo }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ gateways: gateways.map(publicGateway), config: { activationOpen: config.activationOpen, activationPriceMinor: config.activationPriceMinor, activationCredits: config.activationCredits, creditPacks: config.creditPacks, billingOpen: config.billingOpen && !config.maintenanceMode, message: config.maintenanceMode ? config.maintenanceMessage : config.billingPausedMessage }, account, purchases, isDemo: actor.isDemo, accountEmail: actor.email }, { headers: { "Cache-Control": "no-store" } });
 }

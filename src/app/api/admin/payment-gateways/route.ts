@@ -8,6 +8,7 @@ import { PaymentGateway } from "@/models/PaymentGateway";
 import { encryptServiceSecret } from "@/lib/service-config";
 import { AdminAuditEvent } from "@/models/AdminAuditEvent";
 import { connectDB } from "@/lib/db";
+import { paystackLiveApproved } from "@/lib/paystack-live-policy";
 
 export async function GET(request: Request) {
   const actor = await workspaceActor();
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
       if (!gateway.key) return NextResponse.json({ error: "No API key configured." }, { status: 400 });
       const currencies = verify === "nowpayments" ? await cryptoPaymentCurrencies(gateway, true) : [];
       if (verify === "paystack") await providerRequest(gateway, "balance");
-      return NextResponse.json({ message: `${gateway.mode} API credentials accepted.${verify === "nowpayments" ? ` ${currencies.length} merchant assets available. This does not verify the IPN secret or payout wallet.` : " This does not verify checkout or webhook delivery."}` });
+      return NextResponse.json({ message: `${gateway.mode} API credentials accepted.${verify === "nowpayments" ? ` ${currencies.length} merchant assets available. This does not verify the IPN secret or payout wallet.` : gateway.mode === "live" && !paystackLiveApproved() ? " Live checkout remains blocked until merchant approval, webhook confirmation, and billing launch flags are enabled." : " This does not verify checkout or webhook delivery."}` });
     } catch (error) { return NextResponse.json({ error: error instanceof PaymentProviderError ? error.message : "Provider connectivity check failed." }, { status: 503 }); }
   }
   const gateways = await Promise.all([getGateway("paystack", actor.isDemo), getGateway("nowpayments", actor.isDemo)]);

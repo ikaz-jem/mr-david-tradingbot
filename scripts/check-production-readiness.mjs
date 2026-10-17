@@ -60,9 +60,9 @@ else {
 if (process.env.EXCHANGE_EXECUTION_CERTIFIED !== "true") warnings.push("EXCHANGE_EXECUTION_CERTIFIED is not true; live Approval Desk and Autopilot execution remain safely locked until staging certification is complete");
 
 if (process.env.BILLING_LIVE_ENABLED === "true") {
-  for (const name of ["PAYSTACK_LIVE_SECRET_KEY", "PAYSTACK_CURRENCY", "PAYSTACK_ALLOWED_COUNTRIES"]) required(name);
   if (process.env.PAYSTACK_WEBHOOK_CONFIRMED !== "true") errors.push("PAYSTACK_WEBHOOK_CONFIRMED must be true when live billing is enabled");
   if (process.env.PAYSTACK_MERCHANT_APPROVED !== "true") errors.push("PAYSTACK_MERCHANT_APPROVED must be true when live billing is enabled");
+  warnings.push("Verify the live Paystack key, settlement currency and rate in admin payment controls; this offline check cannot inspect encrypted dashboard settings or prove webhook delivery");
 }
 
 console.log(`Production readiness: ${errors.length} error(s), ${warnings.length} warning(s)`);

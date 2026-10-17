@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { PaymentCoinIcon } from "@/components/payment-coin-icon";
 import { shouldVerifyPayment } from "@/lib/payment-display";
 
-type Purchase = { reference: string; kind: string; credits: number; expectedAmount: number; currency: string; status: string; mode: string; provider: string; authorizationUrl: string; payAddress: string; payAmount: string; providerStatus: string; payCurrency: string; payNetwork: string; payExtraId: string; providerPaymentId: string; failureCode: string };
+type Purchase = { reference: string; kind: string; credits: number; expectedAmount: number; currency: string; status: string; mode: string; provider: string; providerCustomerEmail: string; authorizationUrl: string; payAddress: string; payAmount: string; providerStatus: string; payCurrency: string; payNetwork: string; payExtraId: string; providerPaymentId: string; failureCode: string };
 export function PaymentCheckout({ reference }: { reference: string }) {
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [message, setMessage] = useState("");
@@ -43,7 +43,7 @@ export function PaymentCheckout({ reference }: { reference: string }) {
           setPurchase(latest);
           setSyncMessage(latest.status === "paid" ? "Payment confirmed. Your credits are ready." : latest.mode === "demo" ? "Simulation only — no blockchain payment is expected." : shouldVerifyPayment(latest) ? "Watching for payment automatically · checks every 20 seconds" : "Latest payment status received.");
         }
-        settled = ["paid", "failed"].includes(latest.status) || (latest.status === "review" && latest.providerStatus !== "partially_paid");
+        settled = latest.status === "paid" || (latest.status === "failed" && !shouldVerifyPayment(latest)) || (latest.status === "review" && latest.providerStatus !== "partially_paid");
       } catch (error) {
         if (active) setSyncMessage(error instanceof Error && error.name !== "AbortError" ? error.message : "Connection interrupted. Retrying automatically.");
       } finally {
@@ -89,7 +89,7 @@ export function PaymentCheckout({ reference }: { reference: string }) {
       </div>
 
       <div role="status" aria-live="polite" className={`rounded-2xl border px-5 py-4 text-sm ${paid ? "border-accent/35 bg-accent/5 text-accent" : "border-line bg-white/[.025] text-muted"}`}>{paid ? "Payment confirmed. Your credits are ready." : syncMessage}</div>
-      {purchase.mode !== "live" && <div className="rounded-2xl border border-amber-400/30 bg-amber-400/5 px-5 py-4 text-sm text-amber-200">{purchase.mode === "demo" ? "Simulation only. No money is collected and only demo credits are granted." : "Provider test mode. Use sandbox funds or test cards only."}</div>}
+      {purchase.mode !== "live" && <div className="rounded-2xl border border-amber-400/30 bg-amber-400/5 px-5 py-4 text-sm text-amber-200">{purchase.mode === "demo" ? "Simulation only. No money is collected and only demo credits are granted." : "Provider test mode. Use test cards only. Without a public callback, keep this checkout page open; it verifies the payment by reference. No real funds or live credits are involved."}</div>}
 
       {purchase.status === "review" && <div className="rounded-2xl border border-amber-400/35 bg-amber-400/5 px-5 py-4 text-sm text-amber-200">This payment needs review. Partial or mismatched payments are not automatically credited. Do not send another payment without checking with support.</div>}
       {purchase.status === "failed" && <div className="rounded-2xl border border-red-400/35 bg-red-400/5 px-5 py-4 text-sm text-red-200">This payment expired or failed. Return to billing to create a new checkout.</div>}
@@ -107,7 +107,7 @@ export function PaymentCheckout({ reference }: { reference: string }) {
         <aside className="surface rounded-2xl p-5 text-center sm:p-6"><p className="text-sm font-bold">Scan to pay</p><p className="mt-1 text-xs text-muted">Address QR code</p><div className="mx-auto mt-5 w-fit max-w-full rounded-2xl bg-white p-3"><QRCodeSVG value={purchase.payAddress} size={220} level="M" marginSize={4} title="Payment address QR code" className="h-auto max-w-full"/></div><p className="mx-auto mt-4 max-w-xs text-xs leading-relaxed text-muted">The QR contains the address only. Select the exact network and enter the amount{purchase.payExtraId ? " and required memo/tag" : ""} shown alongside. Verify before sending.</p></aside>
       </div> : null}
 
-      {canSend && purchase.provider === "paystack" && purchase.authorizationUrl.startsWith("https://checkout.paystack.com/") && <section className="surface rounded-2xl p-6 sm:p-8"><p className="eyebrow">Continue securely</p><h2 className="mt-2 text-xl font-bold">Pay with Paystack</h2><p className="mt-2 text-sm text-muted">You’ll complete your payment on Paystack and return here to see confirmation.</p><a href={purchase.authorizationUrl} className="button-primary mt-6 inline-flex rounded-xl px-6 py-3 font-bold">Continue to Paystack ↗</a></section>}
+      {canSend && purchase.provider === "paystack" && purchase.authorizationUrl.startsWith("https://checkout.paystack.com/") && <section className="surface rounded-2xl p-6 sm:p-8"><p className="eyebrow">Continue securely</p><h2 className="mt-2 text-xl font-bold">Pay with Paystack</h2><p className="mt-2 text-sm text-muted">{purchase.mode === "test" ? "Open Paystack in a new tab. This page verifies the test payment by reference, even without a callback." : "You’ll complete your payment on Paystack and return here to see confirmation."}</p>{purchase.providerCustomerEmail && <p className="mt-3 text-xs text-muted">Payment email: <span className="font-semibold text-white">{purchase.providerCustomerEmail}</span></p>}<a href={purchase.authorizationUrl} target={purchase.mode === "test" ? "_blank" : undefined} rel={purchase.mode === "test" ? "noopener noreferrer" : undefined} className="button-primary mt-6 inline-flex rounded-xl px-6 py-3 font-bold">Continue to Paystack ↗</a></section>}
       {!paid && purchase.mode === "demo" && <section className="surface rounded-2xl p-6"><h2 className="text-lg font-bold">Demo checkout</h2><p className="mt-2 text-sm text-muted">Preview the confirmation flow without sending a payment.</p><button type="button" disabled={busy} onClick={() => void action("simulate")} className="button-primary mt-5 rounded-xl px-5 py-3 font-bold disabled:opacity-50">{busy ? "Processing…" : `Simulate successful ${purchase.provider === "paystack" ? "Paystack" : "crypto"} payment`}</button></section>}
 
       <section className="surface rounded-2xl p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-bold">Payment tracking</h2><p className="mt-1 text-xs text-muted">This page checks for provider confirmation automatically.</p></div>{!paid && purchase.mode !== "demo" && <button type="button" disabled={busy} onClick={() => void action("verify")} className="rounded-lg border border-line px-3 py-2 text-xs text-muted hover:border-accent/40 hover:text-accent disabled:opacity-50">{busy ? "Refreshing…" : "Refresh now (optional)"}</button>}</div>

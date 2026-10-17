@@ -12,7 +12,7 @@ export async function GET(_request: Request, context: Context) {
   const actor = await workspaceActor();
   if (!actor) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const { reference } = await context.params;
-  const row = await BillingPurchase.findOne({ reference, userId: actor.id, isDemo: actor.isDemo }).select("reference kind credits expectedAmount currency status mode provider authorizationUrl payAddress payAmount payCurrency payNetwork payExtraId providerStatus providerPaymentId failureCode createdAt").lean();
+  const row = await BillingPurchase.findOne({ reference, userId: actor.id, isDemo: actor.isDemo }).select("reference kind credits expectedAmount currency status mode provider providerCustomerEmail authorizationUrl payAddress payAmount payCurrency payNetwork payExtraId providerStatus providerPaymentId failureCode createdAt").lean();
   if (!row) return NextResponse.json({ error: "Payment not found." }, { status: 404 });
   return NextResponse.json({ purchase: row }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -4,6 +4,8 @@ import { validCryptoSettlement } from "@/lib/payment-policy";
 import { fulfillPayment } from "@/lib/payment-fulfillment";
 import { User } from "@/models/User";
 import { paystackSettlementConfig } from "@/lib/billing-catalog";
+import { paystackPaymentDisposition } from "@/lib/paystack-status-policy";
+import { paystackTransactionMatchesPurchase } from "@/lib/paystack-checkout-policy";
 
 export async function purchaseGateway(purchase: { provider?: string; isDemo?: boolean; gatewayId?: unknown; mode?: string }) {
   if (!purchase.gatewayId) {
@@ -23,9 +25,12 @@ export async function verifyPayment(reference: string) {
   if (gateway.provider === "paystack") {
     const result = await providerRequest<{ id: number | string; domain: string; reference: string; status: string; amount: number; currency: string; customer?: { email?: string } }>(gateway, `transaction/verify/${encodeURIComponent(reference)}`);
     const user = await User.findById(purchase.userId).select("email").lean();
-    await BillingPurchase.updateOne({ _id: purchase._id, status: { $ne: "paid" } }, { $set: { providerStatus: result.status, ...(["failed", "abandoned", "reversed"].includes(result.status) ? { status: "failed", checkoutLock: null } : {}) } });
-    if (result.status !== "success") return ["failed", "abandoned", "reversed"].includes(result.status) ? "failed" : purchase.status;
-    const valid = result.reference === reference && result.domain === gateway.mode && result.amount === purchase.expectedAmount && result.currency === purchase.currency && result.customer?.email?.toLowerCase() === user?.email && (typeof result.id === "string" ? /^\d+$/.test(result.id) : Number.isSafeInteger(result.id));
+    const disposition = paystackPaymentDisposition(result.status);
+    if (disposition !== "paid") {
+      await BillingPurchase.updateOne({ _id: purchase._id, status: { $ne: "paid" } }, { $set: { providerStatus: result.status, status: disposition, ...(disposition === "failed" || disposition === "review" ? { checkoutLock: null } : {}) } });
+      return disposition;
+    }
+    const valid = paystackTransactionMatchesPurchase(result, { ...purchase, mode: gateway.mode }, user?.email ?? "");
     if (!valid) { await BillingPurchase.updateOne({ _id: purchase._id, status: { $ne: "paid" } }, { $set: { status: "review", checkoutLock: null } }); return "review"; }
     return fulfillPayment(reference, String(result.id));
   }

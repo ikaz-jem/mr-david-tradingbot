@@ -9,6 +9,6 @@ export function paymentCoinIcon(code: string, logo?: string) {
   return /^[a-z0-9]{2,30}$/i.test(code) ? `https://nowpayments.io/images/coins/${code.toLowerCase()}.svg` : "";
 }
 
-export function shouldVerifyPayment(purchase: { mode: string; status: string; providerStatus?: string }) {
-  return purchase.mode !== "demo" && (purchase.status === "pending" || purchase.status === "initializing" || (purchase.status === "review" && purchase.providerStatus === "partially_paid"));
+export function shouldVerifyPayment(purchase: { mode: string; status: string; provider?: string; providerStatus?: string }) {
+  return purchase.mode !== "demo" && (purchase.status === "pending" || purchase.status === "initializing" || (purchase.status === "review" && purchase.providerStatus === "partially_paid") || (purchase.provider === "paystack" && purchase.status === "failed" && purchase.providerStatus === "abandoned"));
 }

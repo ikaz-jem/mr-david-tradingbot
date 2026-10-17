@@ -11,22 +11,27 @@ import { User } from "@/models/User";
 import { isSameOrigin } from "@/lib/request-origin";
 import { regulatedAccess } from "@/lib/jurisdiction-policy";
 import { writeSecurityAudit } from "@/lib/access-control";
+import { paymentCallbackOrigin, PaymentCallbackError } from "@/lib/payment-callback-policy";
+import { paystackCustomerEmail, PaystackEmailError, paystackInitializePayload } from "@/lib/paystack-checkout-policy";
+import { paystackLiveApproved } from "@/lib/paystack-live-policy";
 
-const schema = z.object({ kind: z.enum(["activation", "topup"]), itemId: z.string().min(2).max(40), provider: z.enum(["paystack", "nowpayments"]).default("paystack"), payCurrency: z.string().regex(/^[a-z0-9]{2,30}$/).default("usdtbsc") });
+const schema = z.object({ kind: z.enum(["activation", "topup"]), itemId: z.string().min(2).max(40), provider: z.enum(["paystack", "nowpayments"]).default("paystack"), payCurrency: z.string().regex(/^[a-z0-9]{2,30}$/).default("usdtbsc"), paymentEmail: z.string().max(254).optional() });
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid origin." }, { status: 403 });
   const actor = await workspaceActor();
   if (!actor) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Select a valid product and payment method." }, { status: 400 });
-  const { kind, itemId, provider, payCurrency } = parsed.data;
+  const { kind, itemId, provider, payCurrency, paymentEmail } = parsed.data;
   let reference = "";
   try {
     const [platform, gateway, account, user] = await Promise.all([getPlatformConfig(actor.isDemo), getGateway(provider, actor.isDemo), getAccountCreditState(actor.id), User.findById(actor.id).select("email emailVerifiedAt countryCode").lean()]);
     if (!platform.billingOpen || platform.maintenanceMode) return NextResponse.json({ error: platform.maintenanceMode ? platform.maintenanceMessage : platform.billingPausedMessage }, { status: 503 });
+    if (provider === "paystack" && gateway.mode === "live" && !paystackLiveApproved()) return NextResponse.json({ error: "Paystack live checkout is awaiting merchant approval and verified webhook setup." }, { status: 503 });
     if (!gateway.enabled || !gatewayReady(gateway)) return NextResponse.json({ error: "This payment method is unavailable." }, { status: 503 });
     if (!actor.isDemo && (!user?.emailVerifiedAt || gateway.mode !== "live")) return NextResponse.json({ error: "Verify your email before paying." }, { status: 403 });
     if (actor.isDemo && gateway.mode === "live") return NextResponse.json({ error: "Demo accounts cannot make live payments." }, { status: 403 });
+    const customerEmail = provider === "paystack" ? paystackCustomerEmail(actor.email, paymentEmail, gateway.mode) : actor.email;
     const jurisdiction = regulatedAccess({ isDemo: actor.isDemo, countryCode: user?.countryCode, action: "billing" });
     if (!jurisdiction.allowed) {
       await writeSecurityAudit({ actor, action: "billing.checkout.denied", resource: "billing", targetType: "jurisdiction", targetId: user?.countryCode ?? "unverified", outcome: "denied", reason: jurisdiction.reason, request }).catch(() => undefined);
@@ -46,13 +51,15 @@ export async function POST(request: Request) {
     await BillingPurchase.init();
     const existing = await BillingPurchase.findOne({ checkoutLock }).lean();
     if (existing) return NextResponse.json({ url: `/dashboard/checkout/${existing.reference}` });
-    const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL;
-    if (!appUrl) throw new Error("Configure APP_URL before checkout");
-    const appOrigin = new URL(appUrl).origin;
-    if (gateway.mode !== "demo" && new URL(appOrigin).protocol !== "https:") return NextResponse.json({ error: "Provider checkout requires a public HTTPS APP_URL for payment callbacks." }, { status: 503 });
+    if (actor.isDemo && provider === "paystack" && gateway.mode === "test") {
+      const recent = await BillingPurchase.countDocuments({ userId: actor.id, provider: "paystack", mode: "test", createdAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) } });
+      if (recent >= 8) return NextResponse.json({ error: "The shared test account has reached its hourly checkout limit. Please try again later." }, { status: 429 });
+    }
+    const appOrigin = paymentCallbackOrigin(provider, gateway.mode, process.env.APP_URL || process.env.NEXTAUTH_URL);
     reference = `enrivea-${randomBytes(16).toString("hex")}`;
     try {
-      await BillingPurchase.create({ userId: actor.id, productId: "platform", kind, itemId, credits, reference, expectedAmount, currency, provider, mode: gateway.mode, isDemo: actor.isDemo, gatewayId: gateway.id, catalogAmountUsd: amountUsd, checkoutLock, payCurrency, payNetwork: coin?.network || "" });
+      await BillingPurchase.create({ userId: actor.id, productId: "platform", kind, itemId, credits, reference, expectedAmount, currency, provider, mode: gateway.mode, isDemo: actor.isDemo, gatewayId: gateway.id, catalogAmountUsd: amountUsd, providerCustomerEmail: provider === "paystack" ? customerEmail : "", checkoutLock, payCurrency, payNetwork: coin?.network || "" });
+      await writeSecurityAudit({ actor, action: "billing.checkout.created", resource: "billing", targetType: "purchase", targetId: reference, outcome: "success", newValue: { kind, itemId, provider, mode: gateway.mode, credits, expectedAmount, currency }, request });
     } catch (error) {
       if (typeof error === "object" && error && "code" in error && error.code === 11000) {
         const concurrent = await BillingPurchase.findOne({ checkoutLock }).lean();
@@ -63,20 +70,22 @@ export async function POST(request: Request) {
     if (gateway.mode === "demo") {
       await BillingPurchase.updateOne({ reference }, { $set: { status: "pending", providerStatus: "simulation", payAmount: (amountUsd / 100).toFixed(2) } });
     } else if (provider === "paystack") {
-      const result = await providerRequest<{ reference: string; authorization_url: string }>(gateway, "transaction/initialize", { email: actor.email, amount: expectedAmount, currency, reference, callback_url: `${appOrigin}/dashboard/checkout/${reference}`, metadata: { kind, itemId } });
+      const result = await providerRequest<{ reference: string; authorization_url: string }>(gateway, "transaction/initialize", paystackInitializePayload({ email: customerEmail, amount: expectedAmount, currency, reference, kind, itemId, ...(appOrigin ? { callbackUrl: `${appOrigin}/dashboard/checkout/${reference}` } : {}) }));
       const url = new URL(result.authorization_url);
       if (result.reference !== reference || url.protocol !== "https:" || url.hostname !== "checkout.paystack.com") throw new Error("Invalid checkout destination");
       await BillingPurchase.updateOne({ reference, status: { $ne: "paid" } }, { $set: { authorizationUrl: url.toString(), status: "pending" } });
     } else {
+      if (!appOrigin) throw new PaymentCallbackError("Crypto checkout requires a public HTTPS APP_URL.");
       const result = await providerRequest<{ payment_id: string | number; pay_address: string; pay_amount: number | string; pay_currency: string; payin_extra_id?: string | number | null }>(gateway, "payment", { price_amount: amountUsd / 100, price_currency: "usd", pay_currency: payCurrency, order_id: reference, order_description: kind === "activation" ? "Enrivea account activation" : `${credits} Enrivea credits`, ipn_callback_url: `${appOrigin}/api/webhooks/nowpayments` });
       if (!/^\d+$/.test(String(result.payment_id)) || typeof result.pay_address !== "string" || !result.pay_address.trim() || result.pay_address.length > 512 || result.pay_currency.toLowerCase() !== payCurrency || !Number.isFinite(Number(result.pay_amount)) || Number(result.pay_amount) <= 0 || (coin?.extraIdRequired && result.payin_extra_id == null)) throw new Error("Invalid crypto payment details");
       await BillingPurchase.updateOne({ reference, status: { $ne: "paid" } }, { $set: { providerPaymentId: String(result.payment_id), payAddress: result.pay_address, payAmount: String(result.pay_amount), payExtraId: result.payin_extra_id == null ? "" : String(result.payin_extra_id), status: "pending", providerStatus: "waiting" } });
     }
     return NextResponse.json({ url: `/dashboard/checkout/${reference}` });
   } catch (error) {
+    if (error instanceof PaystackEmailError) return NextResponse.json({ error: error.message }, { status: 400 });
     const failureCode = error instanceof PaymentProviderError ? error.code : "INITIALIZATION_FAILED";
     if (reference) await BillingPurchase.updateOne({ reference, status: "initializing" }, { $set: { status: "review", checkoutLock: null, failureCode } }).catch(() => undefined);
     console.error("Checkout initialization failed", { reference, provider, failureCode });
-    return NextResponse.json({ error: error instanceof PaymentProviderError ? error.message : "Unable to start payment. Check your payment history before retrying, or contact support.", reference: reference || undefined, code: failureCode }, { status: 503 });
+    return NextResponse.json({ error: error instanceof PaymentProviderError || error instanceof PaymentCallbackError ? error.message : "Unable to start payment. Check your payment history before retrying, or contact support.", reference: reference || undefined, code: failureCode }, { status: 503 });
   }
 }

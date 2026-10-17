@@ -10,5 +10,7 @@ test('automatic checks stop for terminal, demo and mismatched payments', () => {
  for(const status of ['pending','initializing']) assert.equal(shouldVerifyPayment({mode:'live',status}),true);
  assert.equal(shouldVerifyPayment({mode:'live',status:'review',providerStatus:'partially_paid'}),true);
  for(const status of ['paid','failed','review']) assert.equal(shouldVerifyPayment({mode:'live',status}),false);
+ assert.equal(shouldVerifyPayment({mode:'test',provider:'paystack',status:'failed',providerStatus:'abandoned'}),true);
+ assert.equal(shouldVerifyPayment({mode:'live',provider:'paystack',status:'failed',providerStatus:'failed'}),false);
  assert.equal(shouldVerifyPayment({mode:'demo',status:'pending'}),false);
 });

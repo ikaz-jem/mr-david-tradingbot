@@ -1,6 +1,8 @@
 import { PaymentGateway } from "@/models/PaymentGateway";
 import { decryptServiceSecret } from "@/lib/service-config";
 import { connectDB } from "@/lib/db";
+import { paystackValidationFailure } from "@/lib/paystack-checkout-policy";
+import { paystackLiveApproved } from "@/lib/paystack-live-policy";
 
 export type GatewayName = "paystack" | "nowpayments";
 export async function getGateway(provider: GatewayName, isDemo: boolean, id?: string) {
@@ -16,11 +18,12 @@ export class PaymentProviderError extends Error {
   constructor(code: string, message: string) { super(message); this.code = code; this.name = "PaymentProviderError"; }
 }
 export function gatewayReady(gateway: Gateway) {
+  if (gateway.provider === "paystack" && gateway.mode === "live" && !paystackLiveApproved()) return false;
   return gateway.mode === "demo" ? gateway.isDemo : Boolean(gateway.key && (gateway.provider === "paystack" ? gateway.ratePerUsd > 0 && gateway.key.startsWith(gateway.mode === "live" ? "sk_live_" : "sk_test_") : gateway.webhookSecret));
 }
 export function publicGateway(gateway: Gateway) {
   const { key, webhookSecret, ...safe } = gateway;
-  return { ...safe, ready: gatewayReady(gateway), keyConfigured: Boolean(key), webhookConfigured: Boolean(webhookSecret) };
+  return { ...safe, ready: gatewayReady(gateway), keyConfigured: Boolean(key), webhookConfigured: Boolean(webhookSecret), approvalRequired: gateway.provider === "paystack" && gateway.mode === "live" && !paystackLiveApproved() };
 }
 export async function providerRequest<T>(gateway: Gateway, path: string, body?: unknown): Promise<T> {
   if (gateway.mode === "demo") throw new Error("Demo payments do not contact providers");
@@ -33,6 +36,10 @@ export async function providerRequest<T>(gateway: Gateway, path: string, body?: 
     if (/MIN|SMALL/.test(code)) throw new PaymentProviderError("BELOW_MINIMUM", "This amount is below the provider minimum for the selected asset/network. Choose a different asset or a larger credit pack.");
     if (/CURRENCY|PAIR|ROUTE/.test(code)) throw new PaymentProviderError("CURRENCY_UNAVAILABLE", "This asset/network is unavailable for your merchant payout configuration. Choose another or check the provider payout wallets.");
     if (response.status === 429) throw new PaymentProviderError("RATE_LIMITED", "The payment provider is busy. Wait a minute before trying again.");
+    if (gateway.provider === "paystack" && response.status === 400) {
+      const failure = paystackValidationFailure(result);
+      throw new PaymentProviderError(failure.code, failure.message);
+    }
     throw new PaymentProviderError(code.replace(/[^A-Z0-9_]/g, "").slice(0,60), `Payment provider could not start this request (HTTP ${response.status}). Ask support to check the merchant configuration and payment reference.`);
   }
   return gateway.provider === "paystack" ? result.data : result;

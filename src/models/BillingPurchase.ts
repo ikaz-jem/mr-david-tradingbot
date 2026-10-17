@@ -6,6 +6,7 @@ const billingPurchaseSchema = new Schema({
   isDemo: { type: Boolean, default: false, index: true },
   gatewayId: { type: Schema.Types.ObjectId, default: null },
   catalogAmountUsd: { type: Number, default: null },
+  providerCustomerEmail: { type: String, default: "" },
   authorizationUrl: { type: String, default: "" },
   payAddress: { type: String, default: "" },
   payAmount: { type: String, default: "" },
