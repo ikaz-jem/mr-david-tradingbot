@@ -1,2 +1,3 @@
 import { AffiliateDashboard } from "@/components/affiliate-dashboard";
-export default function AffiliatesPage() { return <AffiliateDashboard/>; }
+import { ContextHelp } from "@/components/context-help";
+export default function AffiliatesPage() { return <><ContextHelp href="/help/articles/affiliate-overview" label="How referrals and commissions work"/><AffiliateDashboard/></>; }

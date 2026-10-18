@@ -14,6 +14,7 @@
     "seed:affiliate-showcase-available": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/seed-live-affiliate-showcase.mjs --available",
     "migrate:activation": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-activation-model.mjs",
     "migrate:access": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-access-control.mjs",
+    "migrate:help": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-help-permissions.mjs",
     "migrate:approval-execution": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-approval-execution.mjs",
     "migrate:trade-tracking": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-trade-tracking.mjs",
     "migrate:exchange-markets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-atlas-direct.ps1 scripts/migrate-exchange-market-connections.mjs",
@@ -23,9 +24,11 @@
     "smoke:approval": "node scripts/smoke-approval-desk.mjs",
     "smoke:autopilot": "node scripts/smoke-autopilot-ui.mjs",
     "smoke:operations": "node scripts/smoke-operations-controls.mjs",
+    "smoke:help": "node scripts/smoke-help-center.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
     "@base-ui/react": "^1.8.0",
     "@fontsource/urbanist": "^5.3.0",
     "bcryptjs": "^3.0.2",

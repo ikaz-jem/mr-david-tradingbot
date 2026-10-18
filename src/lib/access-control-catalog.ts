@@ -38,6 +38,11 @@ export const permissionCatalog = [
   ["orders:update", "Orders", "orders", "update", "Manage order operations", "critical"],
   ["support:read", "Support", "support", "read", "View tenant support tickets", "medium"],
   ["support:update", "Support", "support", "update", "Respond to and resolve tickets", "medium"],
+  ["help:read", "Help Center", "help", "read", "View knowledge-base drafts and editorial analytics", "medium"],
+  ["help:create", "Help Center", "help", "create", "Create articles and categories and upload images", "medium"],
+  ["help:update", "Help Center", "help", "update", "Edit articles, categories, and images", "high"],
+  ["help:publish", "Help Center", "help", "publish", "Publish, archive, and restore help articles", "high"],
+  ["help:delete", "Help Center", "help", "delete", "Delete articles and associated images", "high"],
   ["emails:read", "Email", "emails", "read", "View email delivery configuration", "medium"],
   ["emails:update", "Email", "emails", "update", "Send tests and configure email", "high"],
   ["notifications:create", "Notifications", "notifications", "create", "Send platform notifications", "high"],
@@ -47,10 +52,10 @@ export const permissionCatalog = [
 
 export type PermissionKey = (typeof permissionCatalog)[number][0];
 
-const operationalRead = ["reports:read", "products:read", "strategies:read", "signals:read", "orders:read", "support:read"];
+const operationalRead = ["reports:read", "products:read", "strategies:read", "signals:read", "orders:read", "support:read", "help:read"];
 export const systemRoleTemplates = [
   { slug: "super-admin", name: "Super Admin", description: "Unrestricted platform owner. Assignment is tightly protected.", superAdmin: true, permissions: ["*:*"] },
-  { slug: "admin", name: "Admin", description: "Tenant administration without Super Admin role governance.", superAdmin: false, permissions: [...operationalRead, "users:read", "users:update", "users:impersonate", "billing:read", "billing:update", "settings:read", "products:update", "strategies:update", "signals:update", "orders:update", "support:update", "emails:read", "emails:update", "notifications:create", "staff:read", "roles:read", "permissions:read", "audit:read"] },
+  { slug: "admin", name: "Admin", description: "Tenant administration without Super Admin role governance.", superAdmin: false, permissions: [...operationalRead, "users:read", "users:update", "users:impersonate", "billing:read", "billing:update", "settings:read", "products:update", "strategies:update", "signals:update", "orders:update", "support:update", "help:create", "help:update", "help:publish", "help:delete", "emails:read", "emails:update", "notifications:create", "staff:read", "roles:read", "permissions:read", "audit:read"] },
   { slug: "manager", name: "Manager", description: "Operational manager with review and workflow permissions.", superAdmin: false, permissions: [...operationalRead, "users:read", "billing:read", "signals:update", "orders:update", "support:update"] },
   { slug: "staff", name: "Staff", description: "Least-privilege operational staff access.", superAdmin: false, permissions: operationalRead },
   { slug: "customer", name: "Customer", description: "Standard customer workspace access.", superAdmin: false, permissions: [] },

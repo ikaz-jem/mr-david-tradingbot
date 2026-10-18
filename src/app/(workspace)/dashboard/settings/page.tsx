@@ -9,6 +9,7 @@ import { ExchangeConnection } from "@/models/ExchangeConnection";
 import { PageIntro } from "@/components/dashboard-ui";
 import { AccountSettingsForms } from "@/components/account-settings-forms";
 import { scanSymbols } from "@/lib/scan-markets";
+import { ContextHelp } from "@/components/context-help";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
 
   return <>
     <PageIntro eyebrow="Account" title="Settings" description="Keep your account information current and control how you access the workspace." />
+    <ContextHelp href="/help/articles/profile-settings" label="Guide to account settings"/>
     <AccountSettingsForms name={user.name} email={user.email} country={user.countryCode ?? ""} role={user.role} isDemo={user.isDemo} mustChangePassword={user.mustChangePassword} createdAt={user.createdAt.toISOString()} lastPasswordChangedAt={user.lastPasswordChangedAt?.toISOString() ?? null} connectionCount={connectionCount} settings={{
       timezone: user.settings?.timezone ?? "UTC", locale: "en", defaultSymbol, defaultInterval: user.settings?.defaultInterval ?? "4h", riskProfile: user.settings?.riskProfile ?? "balanced", compactMode: user.settings?.compactMode ?? false, reducedMotion: user.settings?.reducedMotion ?? false,
       inAppResearch: user.settings?.inAppResearch ?? true, inAppBilling: user.settings?.inAppBilling ?? true, inAppExchange: user.settings?.inAppExchange ?? true, emailResearch: user.settings?.emailResearch ?? true, emailBilling: user.settings?.emailBilling ?? true, emailSecurity: true,

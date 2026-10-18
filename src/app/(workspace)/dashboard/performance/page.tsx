@@ -11,6 +11,7 @@ import { seedDemoResearch } from "@/lib/demo-workspace";
 import { PaperOutcomeRefresh } from "@/components/paper-outcome-refresh";
 import { EmptyState, PageIntro, SectionHeader, StatCard } from "@/components/dashboard-ui";
 import { getPlatformConfig } from "@/lib/platform-config";
+import { ContextHelp } from "@/components/context-help";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function PerformancePage() {
   const byId = new Map(signals.map(signal => [signal._id.toString(), signal]));
   return <>
     <PageIntro eyebrow="Your results" title="Performance" description="Forward paper outcomes and actual exchange fills are kept separate. This page does not imply live trading returns."/>
+    <ContextHelp href="/help/articles/performance-pnl" label="Understand P&L and performance"/>
     <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="Published ideas" value={String(published)} detail="Every qualifying setup" icon={CircleGauge}/>
       <StatCard label="Paper exits" value={String(stats?.count ?? 0)} detail="Closed simulations only" icon={ChartNoAxesCombined}/>

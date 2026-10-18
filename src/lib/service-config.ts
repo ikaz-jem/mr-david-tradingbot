@@ -61,7 +61,7 @@ function activeEncryptionKey() {
 
 export function serviceEncryptionReady() { try { activeEncryptionKey(); return true; } catch { return false; } }
 
-export function encryptServiceSecret(value: string, field: SecretField | "paymentApiKey" | "paymentWebhookSecret") {
+export function encryptServiceSecret(value: string, field: SecretField | "paymentApiKey" | "paymentWebhookSecret" | "r2AccessKeyId" | "r2SecretAccessKey") {
   const active = activeEncryptionKey();
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", active.key, iv);
@@ -70,7 +70,7 @@ export function encryptServiceSecret(value: string, field: SecretField | "paymen
   return `${active.version}:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${ciphertext.toString("base64url")}`;
 }
 
-export function decryptServiceSecret(value: string, field: SecretField | "paymentApiKey" | "paymentWebhookSecret") {
+export function decryptServiceSecret(value: string, field: SecretField | "paymentApiKey" | "paymentWebhookSecret" | "r2AccessKeyId" | "r2SecretAccessKey") {
   const [version, iv, tag, ciphertext] = value.split(":");
   if ((version !== "v1" && version !== "v2") || !iv || !tag || !ciphertext) throw new Error("Stored service credential has an invalid format");
   const key = version === "v2" ? dedicatedEncryptionKey() : legacyEncryptionKey();

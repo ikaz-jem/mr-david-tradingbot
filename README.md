@@ -31,6 +31,14 @@ The interface uses explicit unavailable or empty states when exchange-confirmed 
 5. Run `npm run dev` and open `http://localhost:3000`.
 6. Register an account. In local development only, accounts are automatically marked verified if Resend is not configured. To grant the initial admin role, run `npm run make-admin -- your@email.example` and sign out and back in.
 
+### Help Center and R2 images
+
+The public knowledge base is at `/help`; authorized platform staff edit demo or live content at `/admin/help`. The first read seeds 55 initial English guides without overwriting edits or restoring deleted articles. Run `npm run migrate:help` after deployment to register the new `help:read/create/update/publish/delete` permissions for existing platform staff roles without altering unrelated grants. Review the seeded articles against the deployed features before relying on them as customer guidance.
+
+Admin image uploads require a private Cloudflare R2 bucket. Configure all four values at `/admin/controls/storage` (preferred) or as the `R2_*` deployment variables; dashboard values take precedence, and the admin control verifies upload/read/delete before saving. Keep `SERVICE_CONFIG_ENCRYPTION_KEY` stable in the deployment: it encrypts dashboard credentials and cannot itself be configured from the dashboard. Create an R2 API token with object read/write/delete access to that bucket. The app accepts JPG/PNG/WebP under 5 MB, converts them to bounded WebP, and proxies public images only for published live articles. Draft/demo images require staff read permission. Article deletion immediately attempts to delete its R2 images; failed deletions are hidden and retried by the daily Vercel cron at `/api/internal/help-assets`. Set a strong `CRON_SECRET` on Vercel so that endpoint can run. The admin editor also has a manual retry control. R2 secrets are entered only in the protected admin form and are never returned or bundled with client code.
+
+Images are optional: the initial guides are text-only. Add screenshots only after redacting personal information and exchange credentials. Helpfulness feedback stores a short-lived pseudonymous hash, not raw search text; set `HELP_FEEDBACK_SALT` if you want an independent salt. Search and article pages expose published live content only.
+
 ### Exchange connections and Approval Desk execution
 
 Set `EXCHANGE_ENCRYPTION_KEY` to a stable, randomly generated 32-byte key encoded as base64 or 64 hex characters. Keep the same value on every server instance and across deployments; losing or changing it makes stored API credentials unreadable. Set it separately in Vercel for each environment. Never commit the key or paste it into chat. A local key can be generated with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"` and copied directly into ignored `.env.local`.

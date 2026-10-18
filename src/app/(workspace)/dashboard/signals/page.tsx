@@ -11,6 +11,7 @@ import { getPlatformConfig } from "@/lib/platform-config";
 import { getServiceConfig } from "@/lib/service-config";
 import { seedDemoResearch } from "@/lib/demo-workspace";
 import { getStrategyCatalog } from "@/lib/strategy-catalog";
+import { ContextHelp } from "@/components/context-help";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function SignalsPage() {
 
   return <>
     <PageIntro eyebrow="Research desk" title="Trade ideas" description="Turn validated closed-candle evidence into an explained decision. Qualified ideas retain their confidence, thesis, risk structure, and complete timing record."/>
+    <ContextHelp href="/help/articles/run-research" label="How research scanning works"/>
     <ScanLauncher enabled={Boolean(!config.maintenanceMode && config.scansOpen && service.openaiApiKey && service.openaiModel)} unavailableReason={config.maintenanceMode ? config.maintenanceMessage : config.scansOpen ? "AI scanning is awaiting provider configuration." : config.scansPausedMessage}/>
 
     <section className="mb-6 grid gap-3 md:grid-cols-3">

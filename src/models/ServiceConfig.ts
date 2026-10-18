@@ -13,6 +13,10 @@ const serviceConfigSchema = new Schema({
   resendFromEmail: { type: String, default: "" },
   resendSupportEmail: { type: String, default: "" },
   resendWebhookSecretEncrypted: { type: String, default: "" },
+  r2AccountId: { type: String, default: "" },
+  r2BucketName: { type: String, default: "" },
+  r2AccessKeyIdEncrypted: { type: String, default: "" },
+  r2SecretAccessKeyEncrypted: { type: String, default: "" },
 }, { timestamps: true });
 
 export type ServiceConfigRecord = InferSchemaType<typeof serviceConfigSchema>;
