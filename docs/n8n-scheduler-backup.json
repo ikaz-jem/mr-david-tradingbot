@@ -1,0 +1,263 @@
+{
+  "name": "Enrivea — backup scheduler (configure before activating)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-approval-scan",
+      "name": "Check approval-scan",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-APP-DOMAIN/api/internal/scheduler-recovery/approval-scan",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 310000
+        }
+      },
+      "id": "approval-scan",
+      "name": "Recover approval-scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-autopilot",
+      "name": "Check autopilot",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-APP-DOMAIN/api/internal/scheduler-recovery/autopilot",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 310000
+        }
+      },
+      "id": "autopilot",
+      "name": "Recover autopilot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-trade-tracking",
+      "name": "Check trade-tracking",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-APP-DOMAIN/api/internal/scheduler-recovery/trade-tracking",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 310000
+        }
+      },
+      "id": "trade-tracking",
+      "name": "Recover trade-tracking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-billing-reconciliation",
+      "name": "Check billing-reconciliation",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-APP-DOMAIN/api/internal/scheduler-recovery/billing-reconciliation",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 310000
+        }
+      },
+      "id": "billing-reconciliation",
+      "name": "Recover billing-reconciliation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-help-assets",
+      "name": "Check help-assets",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-APP-DOMAIN/api/internal/scheduler-recovery/help-assets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 310000
+        }
+      },
+      "id": "help-assets",
+      "name": "Recover help-assets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        720
+      ]
+    }
+  ],
+  "connections": {
+    "Check approval-scan": {
+      "main": [
+        [
+          {
+            "node": "Recover approval-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check autopilot": {
+      "main": [
+        [
+          {
+            "node": "Recover autopilot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check trade-tracking": {
+      "main": [
+        [
+          {
+            "node": "Recover trade-tracking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check billing-reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Recover billing-reconciliation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check help-assets": {
+      "main": [
+        [
+          {
+            "node": "Recover help-assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 1800
+  },
+  "pinData": {}
+}

@@ -18,6 +18,11 @@ const billingPurchaseSchema = new Schema({
   providerPaymentId: { type: String, default: null },
   checkoutLock: { type: String, default: null },
   lastCheckedAt: { type: Date, default: null },
+  reconciliationAttempts: { type: Number, default: 0 },
+  nextReconcileAt: { type: Date, default: Date.now },
+  reconcileLeaseId: { type: String, default: null },
+  reconcileLeaseUntil: { type: Date, default: null },
+  reconciliationError: { type: String, default: "", maxlength: 120 },
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
   productId: { type: String, required: true, default: "signals" },
   kind: { type: String, enum: ["activation", "topup", "monthly"], required: true },
@@ -32,6 +37,7 @@ const billingPurchaseSchema = new Schema({
 }, { timestamps: true });
 
 billingPurchaseSchema.index({ userId: 1, createdAt: -1 });
+billingPurchaseSchema.index({ mode: 1, status: 1, nextReconcileAt: 1 });
 billingPurchaseSchema.index({ checkoutLock: 1 }, { unique: true, partialFilterExpression: { checkoutLock: { $type: "string" } } });
 billingPurchaseSchema.index({ provider: 1, mode: 1, providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: "string" } } });
 export type BillingPurchaseRecord = InferSchemaType<typeof billingPurchaseSchema> & { _id: mongoose.Types.ObjectId };

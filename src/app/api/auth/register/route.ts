@@ -11,6 +11,7 @@ import { emailActionUrl, hashEmailToken, issueEmailToken } from "@/lib/email-tok
 import { hasEmailProvider, sendEmail, verificationEmail } from "@/lib/email";
 import { isSameOrigin } from "@/lib/request-origin";
 import { getPlatformConfig } from "@/lib/platform-config";
+import { allowAuthRequest } from "@/lib/auth-rate-limit";
 
 const schema = z.object({ name: z.string().trim().min(2).max(100), email: z.email().max(254), password: z.string().min(12).max(128) });
 
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: "Enter a name, valid email, and password of at least 12 characters." }, { status: 400 });
     const db = await connectDB();
+    if (!await allowAuthRequest(request, "register", parsed.data.email)) return NextResponse.json({ error: "Too many registration attempts. Try again in 15 minutes." }, { status: 429 });
     const platform = await getPlatformConfig();
     if (platform.maintenanceMode) return NextResponse.json({ error: platform.maintenanceMessage }, { status: 503 });
     if (!platform.registrationOpen) return NextResponse.json({ error: platform.registrationPausedMessage }, { status: 503 });

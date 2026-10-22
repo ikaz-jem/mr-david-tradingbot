@@ -4,7 +4,7 @@ Approval Desk discovery is a shared background job. It analyzes each unique mark
 
 ## Production trigger
 
-The repository includes a Vercel Cron entry in `vercel.json` that invokes the scanner every five minutes on production deployments. Set a random `CRON_SECRET` of at least 16 characters in the Vercel Production environment, redeploy, and confirm the job under the project's Cron Jobs view. Vercel supplies that value as the Bearer authorization header automatically.
+The repository includes a Vercel Cron entry in `vercel.json` that invokes the scanner every five minutes on production deployments. Frequent schedules require a Vercel plan that supports them; Vercel Hobby only supports daily jobs. Set a random `CRON_SECRET` of at least 16 characters in the Vercel Production environment, redeploy, and confirm the job under the project's Cron Jobs view. Vercel supplies that value as the Bearer authorization header automatically.
 
 Call the following endpoint every five minutes from n8n, Vercel Cron, or another trusted scheduler:
 
@@ -46,6 +46,6 @@ For a continuously running local worker, set `APPROVAL_RUN=true` and `APPROVAL_W
 
 An OpenAI 401/403 stops discovery with a credential error. Replace the configured key under Platform controls → AI before retrying. A completed scan with no setup is a valid research result, not an error. User pages refresh the shared queue every 30 seconds while visible.
 
-Approval Desk supports three separate post-unlock paths: a paper position, a user-reported external execution, or an explicitly confirmed Spot market entry through a verified Binance, Bybit, OKX, Kraken, or KuCoin `spot_trade` connection. Live entry submission is owner-scoped, demo-denied, rate-limited, audited, and idempotent across venues. Ambiguous exchange responses are reconciled by the provider's order/client identifier and are never blindly resubmitted.
+Approval Desk supports a paper position, a user-reported external execution, or explicitly confirmed exchange execution through a verified trading connection. Spot entry supports the configured venues; Futures entry additionally requires a separate Futures connection and the deployment execution-certification gate. Live submission is owner-scoped, demo-denied, rate-limited, audited, and idempotent across venues. Ambiguous exchange responses are reconciled by the provider's order/client identifier and are never blindly resubmitted.
 
-Exchange execution submits only the market entry. It does not place protective stop-loss, take-profit, or OCO orders. SELL disposes of an existing Spot asset and does not open a short. Paper positions continue to reconcile complete one-minute candles, conservatively prefer the stop when stop and target both occur in a candle, and report gross simulated P&L excluding fees, slippage, and funding.
+Spot execution submits only the market entry; its stop and target are advisory, and SELL disposes of an existing Spot asset rather than opening a short. Futures execution attempts exchange-native stop-loss and take-profit protection, but must remain disabled until each venue and its position tracker pass staging certification. Paper positions reconcile complete one-minute candles, conservatively prefer the stop when stop and target both occur in a candle, and report gross simulated P&L excluding fees, slippage, and funding.

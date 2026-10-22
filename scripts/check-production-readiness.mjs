@@ -42,7 +42,11 @@ if (encryptionKey) {
     errors.push("EXCHANGE_ENCRYPTION_KEY must be valid base64");
   }
 }
-if (!process.env.ALLOWED_COUNTRIES?.trim()) errors.push("ALLOWED_COUNTRIES is required; live billing and exchange operations fail closed without it");
+const allowedCountries = (process.env.ALLOWED_COUNTRIES ?? "").split(",").map(value => value.trim()).filter(Boolean);
+const blockedCountries = (process.env.BLOCKED_COUNTRIES ?? "").split(",").map(value => value.trim()).filter(Boolean);
+if (!allowedCountries.length) errors.push("ALLOWED_COUNTRIES is required; live billing and exchange operations fail closed without it");
+if ([...allowedCountries, ...blockedCountries].some(value => !/^[A-Z]{2}$/i.test(value))) errors.push("ALLOWED_COUNTRIES and BLOCKED_COUNTRIES must contain comma-separated two-letter country codes");
+if (allowedCountries.some(value => blockedCountries.some(blocked => blocked.toUpperCase() === value.toUpperCase()))) errors.push("A country cannot appear in both ALLOWED_COUNTRIES and BLOCKED_COUNTRIES");
 if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) warnings.push("Resend environment fallback is not configured; verify encrypted admin service configuration before opening registration");
 if ((process.env.RESEND_API_KEY || process.env.RESEND_FROM_EMAIL) && !process.env.RESEND_WEBHOOK_SECRET) warnings.push("RESEND_WEBHOOK_SECRET is missing; delivery, bounce, and complaint reconciliation is incomplete");
 if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) warnings.push("OpenAI environment fallback is not configured; verify encrypted admin service configuration before enabling scans");
@@ -54,10 +58,14 @@ else {
     if (!Array.isArray(vercel.crons) || !vercel.crons.some(job => job.path === "/api/internal/approval-scan")) errors.push("vercel.json does not schedule /api/internal/approval-scan");
     if (!Array.isArray(vercel.crons) || !vercel.crons.some(job => job.path === "/api/internal/autopilot")) errors.push("vercel.json does not schedule /api/internal/autopilot");
     if (!Array.isArray(vercel.crons) || !vercel.crons.some(job => job.path === "/api/internal/trade-tracking")) errors.push("vercel.json does not schedule /api/internal/trade-tracking");
+    for (const path of ["/api/internal/billing-reconciliation", "/api/internal/help-assets"]) {
+      if (!vercel.crons?.some(job => job.path === path)) errors.push(`vercel.json does not schedule ${path}`);
+    }
   } catch { errors.push("vercel.json is not valid JSON"); }
 }
 
 if (process.env.EXCHANGE_EXECUTION_CERTIFIED !== "true") warnings.push("EXCHANGE_EXECUTION_CERTIFIED is not true; live Approval Desk and Autopilot execution remain safely locked until staging certification is complete");
+warnings.push("The configured minute-level Vercel Cron schedules require a plan that supports more than daily jobs; otherwise use an authenticated external scheduler");
 
 if (process.env.BILLING_LIVE_ENABLED === "true") {
   if (process.env.PAYSTACK_WEBHOOK_CONFIRMED !== "true") errors.push("PAYSTACK_WEBHOOK_CONFIRMED must be true when live billing is enabled");

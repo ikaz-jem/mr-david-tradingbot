@@ -6,6 +6,7 @@ import { hasEmailProvider, passwordResetEmail, sendEmail } from "@/lib/email";
 import { isSameOrigin } from "@/lib/request-origin";
 import { EmailToken } from "@/models/EmailToken";
 import { User } from "@/models/User";
+import { allowAuthRequest } from "@/lib/auth-rate-limit";
 
 const schema = z.object({ email: z.email().max(254) });
 const generic = { message: "If that account exists, a reset link will be sent shortly." };
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   if (!await hasEmailProvider()) return NextResponse.json({ error: "Email delivery is not configured." }, { status: 503 });
   try {
     await connectDB();
+    if (!await allowAuthRequest(request, "reset", parsed.data.email)) return NextResponse.json(generic);
     const user = await User.findOne({ email: parsed.data.email.toLowerCase(), emailVerifiedAt: { $ne: null }, status: "active" });
     if (!user) return NextResponse.json(generic);
     if (await EmailToken.exists({ userId: user._id, kind: "reset", createdAt: { $gt: new Date(Date.now() - 60_000) } })) return NextResponse.json(generic);

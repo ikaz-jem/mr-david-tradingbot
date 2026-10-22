@@ -7,6 +7,8 @@ import { notifyUser } from "@/lib/notifications";
 import { ApprovalUnlock } from "@/models/ApprovalUnlock";
 import { ExchangeConnection } from "@/models/ExchangeConnection";
 import { Order } from "@/models/Order";
+import { User } from "@/models/User";
+import { connectDB } from "@/lib/db";
 import { FuturesOrderError, placeFuturesBracketOrder, type FuturesOrderResult } from "@/lib/exchange-futures-orders";
 import { getBinanceFuturesExposure } from "@/lib/binance-tracking";
 import { requireTradeTrackingIndexes } from "@/lib/trade-indexes";
@@ -99,7 +101,15 @@ export async function executeApprovalOnExchange(input: { provider: ExchangeProvi
   }
   let order;
   try {
-    order = await Order.create({ userId: input.userId, connectionId: connection._id, approvalUnlockId: input.approvalUnlockId, opportunityId: input.opportunityId, source, exchange: `${input.provider}_${market}`, market, symbol: input.symbol, side: input.side, quoteAmount: market === "spot" ? input.amountUsdt : input.amountUsdt * (input.futuresConfig?.leverage ?? 1), marginAmount: market === "futures" ? input.amountUsdt : null, leverage: input.futuresConfig?.leverage ?? null, marginMode: input.futuresConfig?.marginMode ?? null, positionMode: input.futuresConfig?.positionMode ?? null, stopPrice: input.stopPrice ?? null, targetPrice: input.targetPrice ?? null, protectionStatus: market === "futures" ? "pending" : "not_applicable", clientOrderId: clientOrderId(input.approvalUnlockId), activeKey, ...(market === "futures" ? { positionGuardKey: String(connection._id) + ":" + input.symbol } : {}), status: "intent" });
+    const db = await connectDB();
+    order = await db.connection.transaction(async session => {
+      // Serializes order reservation against account closure. A closed account
+      // can never acquire a new durable intent after credentials are removed.
+      const owner = await User.updateOne({ _id: input.userId, status: "active", isDemo: false, activatedAt: { $ne: null } }, { $inc: { executionRevision: 1 } }, { session });
+      if (!owner.modifiedCount) throw new ApprovalExecutionError("The account is no longer available for execution.", 403);
+      const [reserved] = await Order.create([{ userId: input.userId, connectionId: connection._id, approvalUnlockId: input.approvalUnlockId, opportunityId: input.opportunityId, source, exchange: `${input.provider}_${market}`, market, symbol: input.symbol, side: input.side, quoteAmount: market === "spot" ? input.amountUsdt : input.amountUsdt * (input.futuresConfig?.leverage ?? 1), marginAmount: market === "futures" ? input.amountUsdt : null, leverage: input.futuresConfig?.leverage ?? null, marginMode: input.futuresConfig?.marginMode ?? null, positionMode: input.futuresConfig?.positionMode ?? null, stopPrice: input.stopPrice ?? null, targetPrice: input.targetPrice ?? null, protectionStatus: market === "futures" ? "pending" : "not_applicable", clientOrderId: clientOrderId(input.approvalUnlockId), activeKey, ...(market === "futures" ? { positionGuardKey: String(connection._id) + ":" + input.symbol } : {}), status: "intent" }], { session });
+      return reserved;
+    });
   } catch (error) {
     if ((error as { code?: number }).code === 11000) throw new ApprovalExecutionError("This setup or market already has a live order in progress.", 409);
     throw error;

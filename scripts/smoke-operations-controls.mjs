@@ -8,7 +8,6 @@ const page = await context.newPage();
 const headers = { Origin: base };
 let initial;
 let userContext;
-let publicContext;
 
 async function update(field, value) {
   const response = await context.request.post("/api/admin/controls", { headers, data: { field, value, reason: "Automated reversible operations smoke test" } });
@@ -38,7 +37,7 @@ try {
   await page.getByRole("heading", { name: "Maintenance mode" }).waitFor();
   assert.match(await page.locator("body").innerText(), /Approval Desk discovery/);
   assert.match(await page.locator("body").innerText(), /Activation and billing/);
-  assert.match(await page.locator("body").innerText(), /Global operations scope/i);
+  assert.match(await page.locator("body").innerText(), /Demo operations scope/i);
 
   const registrationCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "New registrations" }) });
   const registrationAction = initial.registrationOpen ? "Pause New registrations" : "Resume New registrations";
@@ -58,16 +57,11 @@ try {
   assert.equal(savedConfig.registrationOpen, initial.registrationOpen);
 
   await update("registrationOpen", false);
-  let blocked = await context.request.post("/api/auth/register", { headers, data: { name: "Paused Registration Check", email: `paused-${Date.now()}@example.com`, password: "PausedCheck-Password-2026" } });
-  assert.equal(blocked.status(), 503, `registration gate: ${await blocked.text()}`);
-  publicContext = await browser.newContext({ baseURL: base });
-  const publicPage = await publicContext.newPage();
-  await publicPage.goto("/register");
-  await publicPage.getByRole("alert").filter({ hasText: /registrations are temporarily paused/i }).waitFor();
-  await publicPage.getByRole("button", { name: "Registration paused" }).waitFor();
+  const demoControls = (await (await context.request.get("/api/admin/controls")).json()).config;
+  assert.equal(demoControls.registrationOpen, false, "Demo registration gate must persist without changing public live registration.");
 
   await update("billingOpen", false);
-  blocked = await userContext.request.post("/api/demo/billing", { headers, data: { kind: "topup", itemId: "credits_25", requestId: crypto.randomUUID() } });
+  let blocked = await userContext.request.post("/api/demo/billing", { headers, data: { kind: "topup", itemId: "credits_25", requestId: crypto.randomUUID() } });
   assert.equal(blocked.status(), 503, `billing gate: ${await blocked.text()}`);
 
   await update("exchangeConnectionsOpen", false);
@@ -92,10 +86,8 @@ try {
   blocked = await userContext.request.post("/api/paper/reconcile", { headers });
   assert.equal(blocked.status(), 503, `paper reconciliation gate: ${await blocked.text()}`);
 
-  await userPage.goto("/register");
-  await userPage.getByRole("alert").filter({ hasText: /registrations are temporarily paused/i }).waitFor();
   await userPage.goto("/dashboard/credits");
-  await userPage.getByRole("alert").filter({ hasText: /billing paused/i }).waitFor();
+  await userPage.getByRole("alert").filter({ hasText: /billing is temporarily paused/i }).waitFor();
   await userPage.goto("/dashboard/exchanges");
   await userPage.getByRole("alert").filter({ hasText: /new connections paused/i }).waitFor();
   await userPage.goto("/dashboard/support");
@@ -148,6 +140,5 @@ try {
     await update("paperReconciliationOpen", initial.paperReconciliationOpen).catch(() => undefined);
   }
   await userContext?.close();
-  await publicContext?.close();
   await browser.close();
 }

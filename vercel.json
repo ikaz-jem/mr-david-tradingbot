@@ -2,6 +2,22 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/internal/approval-scan",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/internal/autopilot",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/internal/trade-tracking",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/billing-reconciliation",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/internal/help-assets",
       "schedule": "0 4 * * *"
     }

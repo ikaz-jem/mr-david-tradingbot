@@ -10,7 +10,7 @@ import { demoLoginEnabled, getOrCreateDemoUser } from "@/lib/demo";
 import { resolveEffectivePermissions, writeSecurityAudit } from "@/lib/access-control";
 import { UserSession } from "@/models/UserSession";
 
-const credentialsSchema = z.object({ email: z.email().max(254), password: z.string().min(1) });
+const credentialsSchema = z.object({ email: z.email().max(254), password: z.string().min(1).max(128) });
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -69,7 +69,7 @@ export const authOptions: NextAuthOptions = {
         User.findById(token.sub).select("name status emailVerifiedAt authVersion role isDemo mustChangePassword organizationId").lean(),
         token.sessionId ? UserSession.findOne({ sessionId: token.sessionId }).select("status expiresAt lastSeenAt").lean() : null,
       ]);
-      if (!current || current.status !== "active" || !current.emailVerifiedAt || current.authVersion !== token.authVersion || (current.isDemo && !demoLoginEnabled()) || (trackedSession && (trackedSession.status !== "active" || trackedSession.expiresAt <= new Date()))) return {};
+      if (!current || current.status !== "active" || !current.emailVerifiedAt || current.authVersion !== token.authVersion || (current.isDemo && !demoLoginEnabled()) || !trackedSession || trackedSession.status !== "active" || trackedSession.expiresAt <= new Date()) return {};
       token.role = current.role;
       token.name = current.name;
       token.isDemo = current.isDemo;

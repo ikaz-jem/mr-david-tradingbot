@@ -14,12 +14,14 @@ import { writeSecurityAudit } from "@/lib/access-control";
 import { paymentCallbackOrigin, PaymentCallbackError } from "@/lib/payment-callback-policy";
 import { paystackCustomerEmail, PaystackEmailError, paystackInitializePayload } from "@/lib/paystack-checkout-policy";
 import { paystackLiveApproved } from "@/lib/paystack-live-policy";
+import { consumeAdminMutationLimit } from "@/lib/admin-mutation-limit";
 
 const schema = z.object({ kind: z.enum(["activation", "topup"]), itemId: z.string().min(2).max(40), provider: z.enum(["paystack", "nowpayments"]).default("paystack"), payCurrency: z.string().regex(/^[a-z0-9]{2,30}$/).default("usdtbsc"), paymentEmail: z.string().max(254).optional() });
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Invalid origin." }, { status: 403 });
   const actor = await workspaceActor();
   if (!actor) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  if (!await consumeAdminMutationLimit(actor.id, "billing:checkout", 12, 60_000)) return NextResponse.json({ error: "Too many checkout requests. Wait one minute and retry." }, { status: 429 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Select a valid product and payment method." }, { status: 400 });
   const { kind, itemId, provider, payCurrency, paymentEmail } = parsed.data;

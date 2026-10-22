@@ -1,0 +1,9 @@
+import { operationalHealth } from "@/lib/operational-health";
+import { workspaceActor } from "@/lib/workspace-access";
+
+export async function OperationalHealthPanel() {
+  const actor = await workspaceActor();
+  if (!actor || actor.isDemo || actor.organizationKind !== "platform" || !actor.can("settings:read")) return null;
+  const health = await operationalHealth();
+  return <section className="surface mt-5 rounded-[20px] p-5 sm:p-6"><h2 className="font-bold">Background job health</h2><p className="mt-2 text-xs leading-5 text-muted">Observed execution times, not just configured credentials. Failed, stale, or missing jobs need attention before live testing.</p><div className="mt-4 divide-y divide-line">{health.jobs.map(job => <div key={job.key} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="text-sm font-semibold">{job.label}</p><p className="mt-1 text-xs text-muted">Last success: {job.lastSucceededAt ? new Date(job.lastSucceededAt).toLocaleString() : "No run recorded"}</p></div><span className={`rounded-full border px-3 py-1 text-xs ${job.health === "healthy" ? "border-accent/30 text-accent" : "border-amber-300/30 text-amber-200"}`}>{job.health.replaceAll("_", " ")}</span></div>)}</div><div className="mt-4 grid gap-3 text-xs sm:grid-cols-3"><p>Receipt delivery needs review: <b>{health.receiptAttention}</b></p><p>Receipts delayed over 15 minutes: <b>{health.pendingReceipts}</b></p><p>Payments pending over 24 hours: <b>{health.overduePayments}</b></p></div><p className="mt-4 text-xs leading-5 text-muted">Use an external uptime monitor with the protected readiness endpoint to alert your team when jobs stop. Receipt retries stop before the email provider’s duplicate-prevention window expires; inspect those records before sending again.</p></section>;
+}

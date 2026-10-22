@@ -6,13 +6,14 @@ import { DemoWorkspace } from "@/models/DemoWorkspace";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 import { activateAccount, addPurchasedCredits } from "@/lib/credits";
 import { creditFirstPurchase, initializeAffiliateLedger } from "@/lib/affiliates";
-import { notifyUser } from "@/lib/notifications";
-import { accountEventEmail, sendEmail } from "@/lib/email";
+import { accountEventEmail } from "@/lib/email";
+import { AccountDelivery } from "@/models/AccountDelivery";
+import { deliverAccountEvents } from "@/lib/account-delivery";
 
 // Only provider verification or the authenticated demo simulator may call this function.
 export async function fulfillPayment(reference: string, transactionId: string) {
   const db = await connectDB();
-  await Promise.all([BillingPurchase.init(), CreditEntry.init(), initializeAffiliateLedger()]);
+  await Promise.all([BillingPurchase.init(), CreditEntry.init(), AccountDelivery.init(), initializeAffiliateLedger()]);
   const initial = await BillingPurchase.findOne({ reference }).lean();
   if (!initial) throw new Error("Payment not found");
   if (initial.isDemo) await ensureDemoWorkspace(String(initial.userId));
@@ -42,16 +43,18 @@ export async function fulfillPayment(reference: string, transactionId: string) {
       else await addPurchasedCredits(purchase.userId, purchase.credits, reference, `${purchase.credits} platform credit refill`, session);
       await creditFirstPurchase(purchase, session);
     }
+    const title = purchase.kind === "activation" ? "Account activated" : "Credits added";
+    const message = `${purchase.credits} platform credits were added${purchase.isDemo ? " to your demo balance. No real payment was taken" : ""}.`;
+    // A durable receipt commits with the credit grant, not after it.
+    await AccountDelivery.create([{
+      sourceKey: `payment:${reference}`, userId: purchase.userId, isDemo: purchase.isDemo,
+      kind: "billing", title, body: message, href: "/dashboard/credits",
+      email: !purchase.isDemo && user.settings?.emailBilling !== false ? { to: user.email, ...accountEventEmail(user.name, title, message) } : null,
+    }], { session });
     return "paid";
   });
   if (result === "paid") {
-    const title = initial.kind === "activation" ? "Account activated" : "Credits added";
-    const message = `${initial.credits} platform credits were added${initial.isDemo ? " to your demo balance. No real payment was taken" : ""}.`;
-    await notifyUser({ userId: String(initial.userId), kind: "billing", title, body: message, href: "/dashboard/credits", sourceKey: `payment:${reference}` }).catch(() => undefined);
-    const user = await User.findById(initial.userId).select("name email settings").lean();
-    if (!initial.isDemo && user && user.settings?.emailBilling !== false && process.env.APP_URL) {
-      await sendEmail({ to: user.email, category: "billing", eventKey: `payment:${reference}`, ...accountEventEmail(user.name, title, message, new URL("/dashboard/credits", process.env.APP_URL).toString()) }).catch(() => undefined);
-    }
+    await deliverAccountEvents(`payment:${reference}`, 1).catch(() => undefined);
   }
   return result;
 }

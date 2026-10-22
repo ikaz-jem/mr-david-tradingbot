@@ -21,7 +21,7 @@ export async function verifyPayment(reference: string) {
   if (purchase.status === "paid") return "paid";
   if (purchase.mode === "demo") return purchase.status;
   const gateway = await purchaseGateway(purchase);
-  if (gateway.mode === "demo") return purchase.status;
+  if (gateway.mode !== purchase.mode) throw new Error("Restore the original payment gateway mode before verification");
   if (gateway.provider === "paystack") {
     const result = await providerRequest<{ id: number | string; domain: string; reference: string; status: string; amount: number; currency: string; customer?: { email?: string } }>(gateway, `transaction/verify/${encodeURIComponent(reference)}`);
     const user = await User.findById(purchase.userId).select("email").lean();

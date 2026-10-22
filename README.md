@@ -53,7 +53,7 @@ Binance's private API must be reachable from the deployment. Restricting a key t
 
 ### Exchange trade tracking
 
-The scheduled `/api/internal/trade-tracking` job runs every minute with Vercel's `CRON_SECRET` bearer authorization. It leases due Approval Desk and Autopilot orders in MongoDB, reads the owning connection's exchange records, deduplicates fills, and updates the order and linked workspace records. Admins can request an owner-checked single-order refresh from Orders; customers see only their own positions. The job never submits a new trade. Store `CRON_SECRET` in every deployed environment; the local value does not deploy automatically.
+The scheduled `/api/internal/trade-tracking` job runs every minute with Vercel's `CRON_SECRET` bearer authorization. Approval Desk discovery and Autopilot are scheduled every five minutes in `vercel.json`. These frequent jobs require a Vercel plan that supports more than daily Cron Jobs, or an authenticated external scheduler. Trade tracking leases due Approval Desk and Autopilot orders in MongoDB, reads the owning connection's exchange records, deduplicates fills, and updates the order and linked workspace records. Admins can request an owner-checked single-order refresh from Orders; customers see only their own positions. The job never submits a new trade. Store `CRON_SECRET` in every deployed environment; the local value does not deploy automatically.
 
 Run `npm run migrate:trade-tracking` against the intended database before enabling live execution. This creates the unique per-symbol position guard and fill-deduplication indexes. It is non-destructive but can fail if pre-existing data violates uniqueness; investigate such rows instead of dropping data or indexes.
 
