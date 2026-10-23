@@ -16,7 +16,7 @@ import { PLATFORM_CREDIT_ID } from "@/lib/credits";
 import { getAIServiceConfig } from "@/lib/service-config";
 import { runDemoScan } from "@/lib/demo-scan";
 import { getProductCatalog } from "@/lib/product-catalog";
-import { accountEventEmail, sendEmail } from "@/lib/email";
+import { accountEventEmail, hasEmailProvider, sendEmail } from "@/lib/email";
 import { getEnabledStrategies } from "@/lib/strategy-catalog";
 import { resolveStrategySelection } from "@/lib/strategy-selection";
 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
         const debited = await User.findOneAndUpdate(
           { _id: userId, status: "active", activatedAt: { $ne: null }, creditBalance: { $gte: creditCost } },
           { $inc: { creditBalance: -creditCost } },
-          { new: true, session: mongoSession },
+          { returnDocument: "after", session: mongoSession },
         );
         if (!debited) throw new Error("No credits remain for this scan");
         balanceAfterCharge = debited.creditBalance;
@@ -93,13 +93,14 @@ export async function POST(request: Request) {
     }
     const direction = setupSide === "sell" ? "short" : "long";
     await notifyUser({ userId: session.user.id, kind: "research", title: publish ? `${symbol} ${direction} setup found` : `${symbol} AI scan completed`, body: evaluation.summary, href: "/dashboard/signals", sourceKey: `scan:${runId}` }).catch(error => console.error("Scan notification failed", error));
-    if (user.settings?.emailResearch !== false && process.env.APP_URL) {
-      try {
+    try {
+      const appUrl = process.env.APP_URL;
+      if (user.settings?.emailResearch !== false && appUrl && await hasEmailProvider()) {
         const title = publish ? `${symbol} ${direction} setup found` : `${symbol} AI scan completed`;
-        const template = accountEventEmail(user.name, title, evaluation.summary, new URL("/dashboard/signals", process.env.APP_URL).toString());
+        const template = accountEventEmail(user.name, title, evaluation.summary, new URL("/dashboard/signals", appUrl).toString());
         await sendEmail({ to: user.email, category: "research", eventKey: `research:${runId}`, ...template });
-      } catch (error) { console.error("Scan email failed", error); }
-    }
+      }
+    } catch (error) { console.error("Scan email failed", error); }
     return NextResponse.json({ outcome: publish ? "setup" : "no_setup", side: publish ? setupSide : null, strategy: strategy.selectedName, routed: selection.routed, summary: evaluation.summary, confidence: evaluation.confidence, sharedResult: aiCacheHit, signalId: signalId?.toString() ?? null, balance: balanceAfterCharge, cost: creditCost });
   } catch (error) {
     console.error("Scan failed", error);

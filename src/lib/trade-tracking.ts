@@ -51,7 +51,7 @@ export async function trackOneOrder(orderId: string, ownerId?: string) {
   const order = await Order.findOneAndUpdate({
     _id: orderId, ...(ownerId ? { userId: ownerId } : {}), source: { $in: ["approval", "autopilot"] },
     $or: [{ trackLeaseUntil: null }, { trackLeaseUntil: { $lt: now } }],
-  }, { $set: { trackLeaseUntil: new Date(now.getTime() + 270_000), trackLeaseId: leaseId } }, { new: true }).lean();
+  }, { $set: { trackLeaseUntil: new Date(now.getTime() + 270_000), trackLeaseId: leaseId } }, { returnDocument: "after" }).lean();
   if (!order) return { state: "busy" };
   const provider = order.exchange.replace(/_(spot|futures)$/, "") as ExchangeProviderId;
   const baseFilter = { _id: order._id, userId: order.userId, trackLeaseId: leaseId };

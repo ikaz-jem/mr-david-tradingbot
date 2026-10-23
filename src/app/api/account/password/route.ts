@@ -32,13 +32,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, simulated: true });
     }
     const windowStart = Math.floor(Date.now() / (15 * 60_000));
-    const attempts = await SecurityAttempt.findOneAndUpdate({ key: `password:${session.user.id}:${windowStart}` }, { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((windowStart + 2) * 15 * 60_000) } }, { upsert: true, new: true });
+    const attempts = await SecurityAttempt.findOneAndUpdate({ key: `password:${session.user.id}:${windowStart}` }, { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((windowStart + 2) * 15 * 60_000) } }, { upsert: true, returnDocument: "after" });
     if (attempts.count > 5) return NextResponse.json({ error: "Too many password attempts. Try again in 15 minutes." }, { status: 429 });
     const user = await User.findOne({ _id: session.user.id, status: "active", isDemo: false }).select("+passwordHash name email authVersion");
     if (!user) return NextResponse.json({ error: "Password changes are unavailable for this account." }, { status: 403 });
     if (!await compare(parsed.data.currentPassword, user.passwordHash)) return NextResponse.json({ error: "Current password is incorrect." }, { status: 400 });
     const passwordHash = await hash(parsed.data.newPassword, 12);
-    const updated = await User.findOneAndUpdate({ _id: user._id, authVersion: user.authVersion, passwordHash: user.passwordHash }, { $set: { passwordHash, mustChangePassword: false, lastPasswordChangedAt: new Date() }, $inc: { authVersion: 1 } }, { new: true });
+    const updated = await User.findOneAndUpdate({ _id: user._id, authVersion: user.authVersion, passwordHash: user.passwordHash }, { $set: { passwordHash, mustChangePassword: false, lastPasswordChangedAt: new Date() }, $inc: { authVersion: 1 } }, { returnDocument: "after" });
     if (!updated) return NextResponse.json({ error: "Account changed while saving. Please try again." }, { status: 409 });
     await notifyUser({ userId: user.id, kind: "account", title: "Password changed", body: "Your password was updated. All existing sessions have been signed out.", href: "/login", sourceKey: `password:${user.id}:${updated.authVersion}` }).catch(error => console.error("Password notification failed", error));
     const template = passwordChangedEmail(user.name);

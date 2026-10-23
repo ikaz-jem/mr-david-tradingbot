@@ -1,15 +1,16 @@
 import { z } from "zod";
+import { binanceDataOrigin } from "./binance-data-origin.ts";
 import { scanSymbols, scanIntervals, intervalMilliseconds, type ScanInterval } from "./scan-markets.ts";
 export { scanSymbols } from "./scan-markets.ts";
 
 export const scanInput = z.object({ symbol: z.enum(scanSymbols), interval: z.enum(scanIntervals).default("4h"), strategySlug: z.string().regex(/^[a-z][a-z0-9-]{1,39}$/).default("ai-router"), requestId: z.uuid() });
 export type ScanCandle = { openTime: number; closeTime: number; open: number; high: number; low: number; close: number; volume: number };
 
-const DATA_BASE = process.env.BINANCE_DATA_BASE_URL ?? "https://data-api.binance.vision";
-
 export async function getClosedCandles(symbol: (typeof scanSymbols)[number], interval: ScanInterval = "4h"): Promise<ScanCandle[]> {
   const INTERVAL_MS = intervalMilliseconds[interval];
-  const response = await fetch(`${DATA_BASE}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=100`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+  const url = new URL("/api/v3/klines", binanceDataOrigin());
+  url.search = new URLSearchParams({ symbol, interval, limit: "100" }).toString();
+  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(`Market data unavailable (${response.status})`);
   const rows = await response.json();
   if (!Array.isArray(rows)) throw new Error("Invalid market data");

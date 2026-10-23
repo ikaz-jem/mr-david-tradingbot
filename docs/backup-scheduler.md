@@ -4,7 +4,7 @@ Vercel retains the five schedules in vercel.json. Import n8n-scheduler-backup.js
 
 ## Setup
 
-1. Replace YOUR-APP-DOMAIN in each of the five HTTP nodes with the actual HTTPS application domain.
+1. The included workflow points to https://enriveasignal.com. Confirm that this is the active production deployment before enabling it.
 2. Create an n8n Header Auth credential: name Authorization, value Bearer followed by the application's CRON_SECRET. Select this credential in every HTTP node. Never paste it into exported workflow JSON.
 3. The workflow checks every two minutes. Requests use POST /api/internal/scheduler-recovery/{job}. Keep the 310-second HTTP timeout and allow the workflow sufficient total execution time. Do not configure ordinary worker endpoints as backup triggers.
 4. Configure an n8n Error Trigger workflow with your chosen email/Slack/other notification destination and attach it as this workflow's Error Workflow. Alert on failed executions, authorization errors, timeouts and application unreachability. Keep retries bounded; never ignore HTTP errors.

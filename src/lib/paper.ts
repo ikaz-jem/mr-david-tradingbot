@@ -57,8 +57,8 @@ export function evaluatePaperSignal(signal: PaperSignal, candles: PaperCandle[],
 
 export async function getPaperCandles(symbol: string, start: number, end: number): Promise<PaperCandle[]> {
   if (!scanSymbols.includes(symbol as (typeof scanSymbols)[number])) throw new Error("Unsupported paper symbol");
-  const dataBase = process.env.BINANCE_DATA_BASE_URL ?? "https://data-api.binance.vision";
-  const url = `${dataBase}/api/v3/klines?symbol=${symbol}&interval=1m&startTime=${start}&endTime=${end}&limit=1000`;
+  const url = new URL("/api/v3/klines", binanceDataOrigin());
+  url.search = new URLSearchParams({ symbol, interval: "1m", startTime: String(start), endTime: String(end), limit: "1000" }).toString();
   const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(`Paper market data unavailable (${response.status})`);
   const rows = await response.json();
@@ -66,4 +66,5 @@ export async function getPaperCandles(symbol: string, start: number, end: number
   return rows.map(row => ({ openTime: Number(row[0]), open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), closeTime: Number(row[6]) }));
 }
 import { scanSymbols } from "./scan-markets.ts";
+import { binanceDataOrigin } from "./binance-data-origin.ts";
 

@@ -19,6 +19,7 @@ import { AutopilotJob } from "@/models/AutopilotJob";
 import { AutopilotProfile } from "@/models/AutopilotProfile";
 import { AutopilotExecution } from "@/models/AutopilotExecution";
 import { OperationalHealthPanel } from "@/components/operational-health-panel";
+import { binanceDataOrigin } from "@/lib/binance-data-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +50,11 @@ export default async function SystemPage() {
   const ledgerByUser = new Map(ledger.map(row => [String(row._id), row.balance]));
   const gateways = await Promise.all([getGateway("paystack", false), getGateway("nowpayments", false)]);
   const mismatches = users.filter(user => (user.creditBalance ?? 0) !== (ledgerByUser.get(String(user._id)) ?? 0)).length;
+  let marketOriginValid = false;
+  try { marketOriginValid = Boolean(binanceDataOrigin()); } catch { /* Display pending configuration, not an exception page. */ }
   const services = [
     { name: "MongoDB", detail: "Product database connected", ready: true, icon: Database },
-    { name: "Market feed", detail: "Public Binance market-data origin is configured; run a scan or deployment probe to certify connectivity", ready: Boolean(process.env.BINANCE_DATA_BASE_URL), icon: Activity },
+    { name: "Market feed", detail: "A valid Binance market-data origin is available; run a scan or deployment probe to verify connectivity", ready: marketOriginValid, icon: Activity },
     { name: "AI provider", detail: "Key and model required before scans can run", ready: Boolean(servicesStatus.openaiApiKey && servicesStatus.openaiModel), icon: Server },
     { name: "Resend email", detail: "Verified sender and API key required for account email", ready: Boolean(servicesStatus.resendApiKey && servicesStatus.resendFromEmail && process.env.APP_URL), icon: Server },
     ...gateways.map(gateway => ({ name: gateway.provider === "paystack" ? "Paystack checkout" : "USDT BEP20 checkout", detail: "Manage credentials and availability in Platform controls / Payments. Configuration is not a live connectivity check.", ready: gateway.enabled && gatewayReady(gateway), icon: WalletCards })),

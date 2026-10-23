@@ -71,7 +71,7 @@ async function evaluateProfile(profile: mongoose.HydratedDocument<import("@/mode
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const debited = await User.findOneAndUpdate({ _id: user._id, status: "active", activatedAt: { $ne: null }, creditBalance: { $gte: product.cost } }, { $inc: { creditBalance: -product.cost } }, { session, new: true });
+      const debited = await User.findOneAndUpdate({ _id: user._id, status: "active", activatedAt: { $ne: null }, creditBalance: { $gte: product.cost } }, { $inc: { creditBalance: -product.cost } }, { session, returnDocument: "after" });
       if (!debited) throw new Error("INSUFFICIENT_CREDITS");
       await CreditEntry.create([{ userId: user._id, productId: PLATFORM_CREDIT_ID, amount: -product.cost, kind: "capture", sourceKey: `autopilot:${user._id}:${opportunity._id}`, note: `${opportunity.symbol} guarded Autopilot cycle` }], { session });
       await ApprovalUnlock.create([{ _id: unlockId, userId: user._id, opportunityId: opportunity._id, status: "unlocked", creditCost: product.cost, amountUsdt: profile.maxPositionUsd, unlockedAt: new Date() }], { session });
@@ -103,7 +103,7 @@ export async function runAutopilotWorker() {
   await connectDB();
   const runId = randomUUID(); const now = new Date(); const leaseUntil = new Date(now.getTime() + 4 * 60_000);
   await AutopilotJob.updateOne({ key: JOB_KEY }, { $setOnInsert: { key: JOB_KEY, status: "idle", leaseUntil: new Date(0) } }, { upsert: true }).catch(error => { if (!(error instanceof Error) || !error.message.includes("E11000")) throw error; });
-  const job = await AutopilotJob.findOneAndUpdate({ key: JOB_KEY, $or: [{ status: { $ne: "running" } }, { leaseUntil: { $lte: now } }] }, { $set: { status: "running", leaseUntil, runId, startedAt: now, lastError: "" } }, { new: true });
+  const job = await AutopilotJob.findOneAndUpdate({ key: JOB_KEY, $or: [{ status: { $ne: "running" } }, { leaseUntil: { $lte: now } }] }, { $set: { status: "running", leaseUntil, runId, startedAt: now, lastError: "" } }, { returnDocument: "after" });
   if (!job || job.runId !== runId) return { skipped: true, reason: "Worker lease is already held." };
   let evaluated = 0, attempted = 0, accepted = 0, blocked = 0;
   try {

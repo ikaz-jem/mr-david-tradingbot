@@ -23,7 +23,7 @@ export async function getOrCreateDemoUser(role: "user" | "admin") {
   }
   if (!user) return null;
   if (user.role !== role || user.status !== "active" || !user.emailVerifiedAt) {
-    user = await User.findOneAndUpdate({ _id: user._id, isDemo: true }, { $set: { role, status: "active", emailVerifiedAt: new Date() } }, { new: true });
+    user = await User.findOneAndUpdate({ _id: user._id, isDemo: true }, { $set: { role, status: "active", emailVerifiedAt: new Date() } }, { returnDocument: "after" });
   }
   if (!user) return null;
   await seedDemoResearch(user.id, user.name);

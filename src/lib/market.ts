@@ -1,8 +1,10 @@
+import { absoluteHttpsOrigin } from "./binance-data-origin.ts";
+
 export type MarketSnapshot = { symbol: string; price: number; change: number; updatedAt: number };
 export type CandlePoint = { time: string; close: number };
 export type MarketOverview = { markets: MarketSnapshot[]; history: CandlePoint[]; fetchedAt: number };
 
-const BASE = process.env.BINANCE_API_BASE_URL ?? "https://api.binance.com";
+function marketBase() { return absoluteHttpsOrigin(process.env.BINANCE_API_BASE_URL, "https://api.binance.com", "BINANCE_API_BASE_URL"); }
 const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
 let cached: MarketOverview | undefined;
 let pending: Promise<MarketOverview> | undefined;
@@ -32,7 +34,7 @@ export async function getMarketOverview(): Promise<MarketOverview> {
   pending = (async () => {
     async function read(path: string) {
       try {
-        const response = await fetch(BASE + path, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+        const response = await fetch(marketBase() + path, { cache: "no-store", signal: AbortSignal.timeout(8000) });
         return response.ok ? await response.json() : null;
       } catch { return null; }
     }
@@ -49,16 +51,15 @@ export async function getMarketOverview(): Promise<MarketOverview> {
 
 export async function getMarketSnapshot(): Promise<MarketSnapshot[]> {
   try {
-    const response = await fetch(`${BASE}/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbols))}`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const response = await fetch(`${marketBase()}/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbols))}`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`Binance market data ${response.status}`);
     const rows = await response.json() as { symbol: string; lastPrice: string; priceChangePercent: string }[];
     return parseSnapshot(rows);
   } catch { return []; }
 }
-
 export async function getMarketHistory(symbol = "BTCUSDT"): Promise<CandlePoint[]> {
   try {
-    const response = await fetch(`${BASE}/api/v3/klines?symbol=${symbol}&interval=1d&limit=30`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const response = await fetch(`${marketBase()}/api/v3/klines?symbol=${symbol}&interval=1d&limit=30`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`Binance candles ${response.status}`);
     const rows = await response.json() as [number, string, string, string, string, ...unknown[]][];
     return rows.map(row => ({ time: new Date(row[0]).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }), close: Number(row[4]) }));

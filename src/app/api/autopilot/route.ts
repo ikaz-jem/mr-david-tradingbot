@@ -30,12 +30,12 @@ const input = z.discriminatedUnion("action", [settings, status]);
 
 async function throttle(userId: string) {
   const bucket = Math.floor(Date.now() / 60_000);
-  const row = await SecurityAttempt.findOneAndUpdate({ key: `autopilot-control:${userId}:${bucket}` }, { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((bucket + 2) * 60_000) } }, { upsert: true, new: true });
+  const row = await SecurityAttempt.findOneAndUpdate({ key: `autopilot-control:${userId}:${bucket}` }, { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date((bucket + 2) * 60_000) } }, { upsert: true, returnDocument: "after" });
   return (row?.count ?? 0) <= 10;
 }
 
 async function ensureProfile(actor: NonNullable<Awaited<ReturnType<typeof workspaceActor>>>) {
-  return AutopilotProfile.findOneAndUpdate({ userId: actor.id }, { $setOnInsert: { userId: actor.id, organizationId: actor.organizationId } }, { upsert: true, new: true });
+  return AutopilotProfile.findOneAndUpdate({ userId: actor.id }, { $setOnInsert: { userId: actor.id, organizationId: actor.organizationId } }, { upsert: true, returnDocument: "after" });
 }
 
 function publicStatus(status: string) {

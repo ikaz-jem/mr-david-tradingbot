@@ -30,6 +30,14 @@ if (!serviceEncryptionKey) warnings.push("SERVICE_CONFIG_ENCRYPTION_KEY is missi
 else if (Buffer.from(serviceEncryptionKey, "base64").length !== 32) errors.push("SERVICE_CONFIG_ENCRYPTION_KEY must decode to exactly 32 bytes");
 httpsUrl("NEXTAUTH_URL");
 httpsUrl("APP_URL");
+for (const name of ["BINANCE_DATA_BASE_URL", "BINANCE_API_BASE_URL"]) {
+  const value = process.env[name]?.trim();
+  if (!value) continue; // An empty optional override uses the built-in HTTPS origin.
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) errors.push(`${name} must be an absolute HTTPS origin without a path, query, or credentials`);
+  } catch { errors.push(`${name} must be an absolute HTTPS origin`); }
+}
 if (process.env.NEXTAUTH_URL && process.env.APP_URL && process.env.NEXTAUTH_URL.replace(/\/$/, "") !== process.env.APP_URL.replace(/\/$/, "")) warnings.push("NEXTAUTH_URL and APP_URL use different origins");
 const cronSecret = required("CRON_SECRET");
 if (cronSecret && (cronSecret.length < 16 || /replace|example|scheduler-secret/i.test(cronSecret))) errors.push("CRON_SECRET must be a unique random value of at least 16 characters");

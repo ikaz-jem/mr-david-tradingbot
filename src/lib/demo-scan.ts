@@ -49,7 +49,7 @@ export async function runDemoScan(userId: string, symbol: string, interval: Scan
     const debited = await DemoWorkspace.findOneAndUpdate({ _id: workspace._id, activatedAt: { $ne: null }, creditBalance: { $gte: product.cost }, "receipts.requestId": { $ne: requestId } }, {
       $inc: { creditBalance: -product.cost, revision: 1 },
       $push: { receipts: { requestId, kind: "scan", productId: "signals", itemId: symbol + ":" + interval + ":" + strategySlug, amount: 0, credits: -product.cost, createdAt: new Date() }, activity: { $each: [{ productId: "signals", amount: -product.cost, note: symbol + " " + interval + " " + strategy.selectedName + " research", createdAt: new Date() }], $slice: -200 } },
-    }, { new: true });
+    }, { returnDocument: "after" });
     if (!debited) throw new Error("The demo wallet changed before capture");
     charged = true;
     if (publish) {
