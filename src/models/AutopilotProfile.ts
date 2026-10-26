@@ -5,7 +5,7 @@ const schema = new Schema({
   organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
   status: { type: String, enum: ["paused", "running", "emergency_stopped"], default: "paused", index: true },
   provider: { type: String, enum: ["binance", "bybit", "okx", "kraken", "kucoin"], default: "binance" },
-  market: { type: String, enum: ["futures"], default: "futures" },
+  market: { type: String, enum: ["spot", "futures"], default: "futures" },
   strategySlug: { type: String, default: "ai-router", maxlength: 40 },
   allowedSymbols: { type: [String], default: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] },
   allowedIntervals: { type: [String], default: ["15m", "1h", "4h"] },

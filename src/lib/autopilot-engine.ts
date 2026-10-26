@@ -33,6 +33,7 @@ async function evaluateProfile(profile: mongoose.HydratedDocument<import("@/mode
   const user = await User.findOne({ _id: profile.userId, status: "active", isDemo: false }).select("_id organizationId countryCode activatedAt creditBalance").lean();
   if (!user) { await setDecision(profile._id, "Account is unavailable."); return "blocked"; }
   const jurisdiction = regulatedAccess({ isDemo: false, countryCode: user.countryCode, action: "exchange_execution" });
+  if (profile.market !== "futures") { await setDecision(profile._id, "Spot Autopilot is awaiting certified exchange-side protective exits. No order was submitted."); return "blocked"; }
   const connection = await ExchangeConnection.findOne({ userId: user._id, provider: profile.provider, market: "futures", environment: "live", status: "connected", access: "futures_trade" }).select("_id").lean();
   if (profile.provider !== "binance") { await setDecision(profile._id, "Futures tracking for this exchange is not certified."); return "blocked"; }
   const now = new Date();
@@ -71,6 +72,8 @@ async function evaluateProfile(profile: mongoose.HydratedDocument<import("@/mode
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
+      const stillArmed = await AutopilotProfile.updateOne({ _id: profile._id, userId: user._id, revision: profile.revision, status: "running", market: "futures", provider: profile.provider }, { $set: { lastEvaluatedAt: new Date() } }, { session });
+      if (!stillArmed.modifiedCount) throw new Error("AUTOPILOT_POLICY_CHANGED");
       const debited = await User.findOneAndUpdate({ _id: user._id, status: "active", activatedAt: { $ne: null }, creditBalance: { $gte: product.cost } }, { $inc: { creditBalance: -product.cost } }, { session, returnDocument: "after" });
       if (!debited) throw new Error("INSUFFICIENT_CREDITS");
       await CreditEntry.create([{ userId: user._id, productId: PLATFORM_CREDIT_ID, amount: -product.cost, kind: "capture", sourceKey: `autopilot:${user._id}:${opportunity._id}`, note: `${opportunity.symbol} guarded Autopilot cycle` }], { session });

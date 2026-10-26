@@ -64,12 +64,12 @@ export function assertReadOnlyBinancePermissions(permissions: BinancePermissions
 
 export function assertSpotTradingBinancePermissions(permissions: BinancePermissions) {
   if (!permissions.enableReading || !permissions.enableSpotAndMarginTrading) throw new BinanceApiError("Enable reading and Spot trading on the Binance key before connecting.", 400);
-  if (permissions.enableWithdrawals || permissions.enableInternalTransfer || permissions.permitsUniversalTransfer || permissions.enableMargin || permissions.enableFutures) throw new BinanceApiError("Disable withdrawals, transfers, margin, and futures. Approval Desk requires only reading and Spot trading.", 400);
+  if (permissions.enableWithdrawals || permissions.enableInternalTransfer || permissions.permitsUniversalTransfer || permissions.enableMargin) throw new BinanceApiError("Disable withdrawals, transfers, and Margin permissions.", 400);
 }
 
 export function assertFuturesTradingBinancePermissions(permissions: BinancePermissions) {
   if (!permissions.enableReading || !permissions.enableFutures) throw new BinanceApiError("Enable reading and USD-M Futures trading on the Binance key before connecting.", 400);
-  if (permissions.enableWithdrawals || permissions.enableInternalTransfer || permissions.permitsUniversalTransfer || permissions.enableSpotAndMarginTrading || permissions.enableMargin) throw new BinanceApiError("Use a dedicated Binance Futures key. Disable withdrawals, transfers, Spot, and Margin permissions.", 400);
+  if (permissions.enableWithdrawals || permissions.enableInternalTransfer || permissions.permitsUniversalTransfer || permissions.enableMargin) throw new BinanceApiError("Disable withdrawals, transfers, and Margin permissions.", 400);
 }
 
 export type BinanceSpotOrder = { symbol: string; orderId: string; clientOrderId: string; status: string; side: "BUY" | "SELL"; executedQty: string; cummulativeQuoteQty: string };

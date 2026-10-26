@@ -18,11 +18,11 @@ const actionInput = z.discriminatedUnion("action", [
   z.object({ action: z.literal("close_approval_position"), opportunityId: z.string().min(8).max(64) }),
   z.object({ action: z.literal("autopilot_run"), requestId: z.string().uuid() }),
   z.object({ action: z.literal("autopilot_status"), status: z.enum(["paused", "emergency_stopped"]) }),
-  z.object({ action: z.literal("autopilot_settings"), maxPositionUsd: z.number().min(10).max(100000), maxDailyTrades: z.number().int().min(1).max(50), dailyLossLimitPct: z.number().min(.25).max(20), allowedSymbols: z.array(z.enum(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "LINKUSDT"])).min(1).max(6), strategySlug: z.string().min(2).max(64) }),
+  z.object({ action: z.literal("autopilot_settings"), maxPositionUsd: z.number().min(10).max(100000), leverage: z.number().int().min(1).max(20), maxDailyTrades: z.number().int().min(1).max(50), dailyLossLimitPct: z.number().min(.25).max(20), allowedSymbols: z.array(z.enum(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "LINKUSDT"])).min(1).max(6), strategySlug: z.string().min(2).max(64) }),
 ]);
 
 function serialize(profile: NonNullable<Awaited<ReturnType<typeof ensureCompanionDemo>>>) {
-  return { autopilotStatus: profile.autopilotStatus, maxPositionUsd: profile.maxPositionUsd, maxDailyTrades: profile.maxDailyTrades, dailyLossLimitPct: profile.dailyLossLimitPct, allowedSymbols: profile.allowedSymbols, approvalStrategySlug: profile.approvalStrategySlug, autopilotStrategySlug: profile.autopilotStrategySlug, opportunities: [...profile.opportunities].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()), autopilotTrades: [...(profile.autopilotTrades ?? [])].sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime()), revision: profile.revision };
+  return { autopilotStatus: profile.autopilotStatus, maxPositionUsd: profile.maxPositionUsd, leverage: profile.autopilotLeverage ?? 2, maxDailyTrades: profile.maxDailyTrades, dailyLossLimitPct: profile.dailyLossLimitPct, allowedSymbols: profile.allowedSymbols, approvalStrategySlug: profile.approvalStrategySlug, autopilotStrategySlug: profile.autopilotStrategySlug, opportunities: [...profile.opportunities].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()), autopilotTrades: [...(profile.autopilotTrades ?? [])].sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime()).map(item => ({ ...item.toObject(), exchange: "Binance Futures · Demo" })), revision: profile.revision };
 }
 
 async function state(userId: string, profile: NonNullable<Awaited<ReturnType<typeof ensureCompanionDemo>>>) {
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
     try { charge = await chargeRun(actor.id, "autopilot", parsed.data.requestId, `autopilot-cycle:${strategy.slug}:v${strategy.version}`, `Guarded Autopilot run · ${strategy.name}`); }
     catch (error) { return error instanceof CreditActionError ? NextResponse.json({ error: error.message }, { status: error.status }) : NextResponse.json({ error: "Credit processing failed. No action was completed." }, { status: 503 }); }
     if (charge.duplicate) return NextResponse.json({ ok: true, message: `This Autopilot run was already started. ${charge.cost} credits were charged once.`, ...await state(actor.id, profile) });
-    const trade = { ...nextDemoAutopilotTrade(actor.id, profile.autopilotTrades?.length ?? 0, profile.maxPositionUsd, profile.allowedSymbols), strategySlug: strategy.slug, strategyName: strategy.name, strategyVersion: strategy.version };
+    const trade = { ...nextDemoAutopilotTrade(actor.id, profile.autopilotTrades?.length ?? 0, profile.maxPositionUsd, profile.autopilotLeverage ?? 2, profile.allowedSymbols), strategySlug: strategy.slug, strategyName: strategy.name, strategyVersion: strategy.version };
     const result = await TradingCompanionProfile.updateOne(filter, { $set: { autopilotStatus: "running" }, $push: { autopilotTrades: { $each: [trade], $position: 0, $slice: 100 } }, $inc: { revision: 1 } });
     if (!result.modifiedCount) {
       await refundRun(actor.id, parsed.data.requestId, charge.cost, "autopilot");
@@ -182,7 +182,7 @@ export async function POST(request: Request) {
     const requestedStrategySlug = parsed.data.strategySlug;
     const strategies = await getEnabledStrategies(true, "autopilot");
     if (!strategies.some((item) => item.slug === requestedStrategySlug)) return NextResponse.json({ error: "This strategy is not available for Autopilot." }, { status: 409 });
-    update = { $set: { maxPositionUsd: parsed.data.maxPositionUsd, maxDailyTrades: parsed.data.maxDailyTrades, dailyLossLimitPct: parsed.data.dailyLossLimitPct, allowedSymbols: parsed.data.allowedSymbols, autopilotStrategySlug: requestedStrategySlug }, $inc: { revision: 1 } };
+    update = { $set: { maxPositionUsd: parsed.data.maxPositionUsd, autopilotLeverage: parsed.data.leverage, maxDailyTrades: parsed.data.maxDailyTrades, dailyLossLimitPct: parsed.data.dailyLossLimitPct, allowedSymbols: parsed.data.allowedSymbols, autopilotStrategySlug: requestedStrategySlug }, $inc: { revision: 1 } };
     message = "Autopilot risk controls saved.";
   }
   const result = await TradingCompanionProfile.updateOne(filter, update);

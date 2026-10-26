@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { bybitPermissionDecision, krakenPermissionDecision, kucoinPermissionDecision, okxPermissionDecision } from "../src/lib/exchange-permission-policy.ts";
 
-test("Bybit accepts only SpotTrade for execution", () => {
+test("Bybit accepts combined Spot and Contract trading without wallet powers", () => {
   assert.equal(bybitPermissionDecision(0, { Spot: ["SpotTrade"], Wallet: [] }, "spot_trade").allowed, true);
   assert.equal(bybitPermissionDecision(0, { Spot: ["SpotTrade"], Wallet: ["Withdraw"] }, "spot_trade").allowed, false);
   assert.equal(bybitPermissionDecision(1, { Spot: [] }, "read_only").allowed, true);
+  assert.equal(bybitPermissionDecision(0, { Spot: ["SpotTrade"], ContractTrade: ["Order", "Position"] }, "spot_trade").allowed, true);
+  assert.equal(bybitPermissionDecision(0, { Spot: ["SpotTrade"], ContractTrade: ["Order", "Position"] }, "futures_trade").allowed, true);
 });
 
 test("Bybit futures accepts only contract order or position powers", () => {
@@ -27,10 +29,12 @@ test("Kraken execution requires query and order permissions but denies funding p
   assert.equal(krakenPermissionDecision(["Query Funds"], "read_only").allowed, true);
 });
 
-test("KuCoin accepts only General and Spot for execution", () => {
+test("KuCoin accepts combined Spot and Futures trading without transfer powers", () => {
   assert.equal(kucoinPermissionDecision(["general", "spot"], "spot_trade").allowed, true);
   assert.equal(kucoinPermissionDecision(["general", "spot", "margin"], "spot_trade").allowed, false);
   assert.equal(kucoinPermissionDecision(["general"], "read_only").allowed, true);
   assert.equal(kucoinPermissionDecision(["general", "futures"], "futures_trade").allowed, true);
-  assert.equal(kucoinPermissionDecision(["general", "spot", "futures"], "futures_trade").allowed, false);
+  assert.equal(kucoinPermissionDecision(["general", "spot", "futures"], "futures_trade").allowed, true);
+  assert.equal(kucoinPermissionDecision(["general", "spot", "futures"], "spot_trade").allowed, true);
+  assert.equal(kucoinPermissionDecision(["general", "spot", "futures", "transfer"], "futures_trade").allowed, false);
 });

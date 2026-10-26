@@ -81,10 +81,14 @@ export function analyzeCandles(candles: ScanCandle[], engine: StrategyEngine = "
   let longEligible = false;
   let shortEligible = false;
   let score = 0;
+  let longChecks: boolean[] = [];
+  let shortChecks: boolean[] = [];
   let summary = "";
   if (engine === "trend-breakout") {
     longEligible = bullishTrend && upsideBreakout && confirmedVolume && saneVolatility;
     shortEligible = bearishTrend && downsideBreakdown && confirmedVolume && saneVolatility;
+    longChecks = [bullishTrend, upsideBreakout, confirmedVolume, saneVolatility];
+    shortChecks = [bearishTrend, downsideBreakdown, confirmedVolume, saneVolatility];
     score = clampScore(20 * Number(bullishTrend || bearishTrend) + 35 * Number(upsideBreakout || downsideBreakdown) + 25 * Math.min(relativeVolume / volumeThreshold, 1) + 20 * Number(saneVolatility));
     summary = "moving-average trend, 20-candle boundary, relative-volume, and volatility filters";
   } else if (engine === "momentum-continuation") {
@@ -92,11 +96,15 @@ export function analyzeCandles(candles: ScanCandle[], engine: StrategyEngine = "
     const bearishMomentum = momentum10 <= -momentumThreshold && rsi14 <= 48 && rsi14 >= (sensitivity === "aggressive" ? 18 : 25);
     longEligible = bullishTrend && bullishMomentum && confirmedVolume && saneVolatility;
     shortEligible = bearishTrend && bearishMomentum && confirmedVolume && saneVolatility;
+    longChecks = [bullishTrend, bullishMomentum, confirmedVolume, saneVolatility];
+    shortChecks = [bearishTrend, bearishMomentum, confirmedVolume, saneVolatility];
     score = clampScore(25 * Number(bullishTrend || bearishTrend) + 30 * Math.min(Math.abs(momentum10) / momentumThreshold, 1) + 25 * Math.min(relativeVolume / volumeThreshold, 1) + 20 * Number(saneVolatility));
     summary = "trend, 10-candle momentum, RSI, relative-volume, and volatility filters";
   } else if (engine === "mean-reversion") {
     longEligible = recent.close < lowerBand && rsi14 <= oversold && saneVolatility;
     shortEligible = recent.close > upperBand && rsi14 >= overbought && saneVolatility;
+    longChecks = [recent.close < lowerBand, rsi14 <= oversold, saneVolatility];
+    shortChecks = [recent.close > upperBand, rsi14 >= overbought, saneVolatility];
     const extension = standardDeviation20 ? Math.abs(recent.close - sma20) / standardDeviation20 : 0;
     score = clampScore(45 * Math.min(extension / bandMultiplier, 1) + 35 * Math.min(Math.abs(rsi14 - 50) / Math.max(50 - oversold, 1), 1) + 20 * Number(saneVolatility));
     summary = "volatility-band extension, RSI exhaustion, and return-to-mean filters";
@@ -105,25 +113,51 @@ export function analyzeCandles(candles: ScanCandle[], engine: StrategyEngine = "
     const bearishConfirmation = sensitivity === "conservative" ? bearishFvg && bearishStructureShift : sensitivity === "aggressive" ? bearishFvg || bearishStructureShift || bearishSweep : bearishFvg || bearishStructureShift;
     longEligible = bullishSweep && bullishConfirmation && saneVolatility;
     shortEligible = bearishSweep && bearishConfirmation && saneVolatility;
+    longChecks = [bullishSweep, bullishConfirmation, saneVolatility];
+    shortChecks = [bearishSweep, bearishConfirmation, saneVolatility];
     score = clampScore(40 * Number(bullishSweep || bearishSweep) + 25 * Number(bullishFvg || bearishFvg) + 20 * Number(bullishStructureShift || bearishStructureShift) + 15 * Number(saneVolatility));
     summary = "declared liquidity-sweep, three-candle imbalance, structure-shift, and volatility heuristics";
   } else {
     const sequenceConfirmed = sensitivity === "conservative" ? confirmedVolume : true;
     longEligible = bullishSwingSequence && bullishTrend && sequenceConfirmed && saneVolatility;
     shortEligible = bearishSwingSequence && bearishTrend && sequenceConfirmed && saneVolatility;
+    longChecks = [bullishSwingSequence, bullishTrend, sequenceConfirmed, saneVolatility];
+    shortChecks = [bearishSwingSequence, bearishTrend, sequenceConfirmed, saneVolatility];
     score = clampScore(45 * Number(bullishSwingSequence || bearishSwingSequence) + 25 * Number(bullishTrend || bearishTrend) + 15 * Math.min(relativeVolume / volumeThreshold, 1) + 15 * Number(saneVolatility));
     summary = "three-segment swing sequence, trend, volume, and invalidation heuristics";
   }
   const setupSide: "buy" | "sell" | null = longEligible ? "buy" : shortEligible ? "sell" : null;
   const hasSetup = setupSide !== null;
+  const readinessScore = Math.round(100 * Math.max(longChecks.filter(Boolean).length / longChecks.length, shortChecks.filter(Boolean).length / shortChecks.length));
+  const failedChecks: string[] = [];
+  if (engine === "trend-breakout") {
+    if (!bullishTrend && !bearishTrend) failedChecks.push("trend is not aligned");
+    if (!upsideBreakout && !downsideBreakdown) failedChecks.push("no 20-candle breakout or breakdown");
+    if (!confirmedVolume) failedChecks.push("relative volume is below the strategy threshold");
+  } else if (engine === "momentum-continuation") {
+    if (!bullishTrend && !bearishTrend) failedChecks.push("trend is not aligned");
+    if (Math.abs(momentum10) < momentumThreshold) failedChecks.push("10-candle momentum is too weak");
+    if (!confirmedVolume) failedChecks.push("relative volume is below the strategy threshold");
+  } else if (engine === "mean-reversion") {
+    if (recent.close >= lowerBand && recent.close <= upperBand) failedChecks.push("price remains inside the volatility bands");
+    if (rsi14 > oversold && rsi14 < overbought) failedChecks.push("RSI is not at an exhaustion level");
+  } else if (engine === "ict-price-structure") {
+    if (!bullishSweep && !bearishSweep) failedChecks.push("no qualifying liquidity sweep");
+    if (!bullishFvg && !bearishFvg && !bullishStructureShift && !bearishStructureShift) failedChecks.push("no imbalance or structure confirmation");
+  } else {
+    if (!bullishSwingSequence && !bearishSwingSequence) failedChecks.push("swing sequence is not confirmed");
+    if (!bullishTrend && !bearishTrend) failedChecks.push("trend is not aligned");
+  }
+  if (!saneVolatility) failedChecks.push("volatility is outside the approved range");
+  if (!hasSetup && failedChecks.length === 0) failedChecks.push("directional conditions do not align on the same side");
   const entry = rounded(recent.close);
   const riskDistance = engine === "mean-reversion" ? 1.25 * atr14 : 1.5 * atr14;
   const rewardDistance = engine === "mean-reversion" ? Math.abs(entry - sma20) : engine === "elliott-wave-assist" ? 2.5 * atr14 : 3 * atr14;
   const stop = rounded(setupSide === "sell" ? entry + riskDistance : entry - riskDistance);
   const target = rounded(setupSide === "sell" ? entry - rewardDistance : entry + rewardDistance);
   return {
-    hasSetup, setupSide, entry, stop, target, score, engine, sensitivity, dataCutoff: new Date(recent.closeTime),
+    hasSetup, setupSide, entry, stop, target, score, readinessScore, engine, sensitivity, dataCutoff: new Date(recent.closeTime),
     facts: { lastClose: entry, sma20: rounded(sma20), sma50: rounded(sma50), prior20High: rounded(priorHigh), prior20Low: rounded(priorLow), atr14: rounded(atr14), relativeVolume: rounded(relativeVolume), rsi14: rounded(rsi14), momentum10: rounded(momentum10), upperBand: rounded(upperBand), lowerBand: rounded(lowerBand), bullishTrend, bearishTrend, upsideBreakout, downsideBreakdown, liquidMove, confirmedVolume, saneVolatility, bullishSweep, bearishSweep, bullishFvg, bearishFvg, bullishStructureShift, bearishStructureShift, bullishSwingSequence, bearishSwingSequence, longEligible, shortEligible },
-    summary: hasSetup ? `${setupSide === "buy" ? "Long" : "Short"} candidate passed ${summary}.` : `No qualifying directional setup: neither a long nor short candidate passed the ${summary}.`,
+    summary: hasSetup ? `${setupSide === "buy" ? "Long" : "Short"} candidate passed ${summary}.` : `No qualifying ${engine.replaceAll("-", " ")} setup: ${failedChecks.join("; ")}.`,
   };
 }

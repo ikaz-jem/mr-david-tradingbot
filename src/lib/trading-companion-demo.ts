@@ -83,7 +83,7 @@ function seedAutopilotTrades(userId: string) {
   ] as const;
   return rows.map((row, index) => {
     const outcome = row.status === "cancelled" ? { pnlUsdt: 0, pnlPct: 0 } : pnl(row.side, row.entryPrice, row.price, row.amountUsdt);
-    return { tradeId: createHash("sha256").update(`autopilot-demo:${userId}:${index}`).digest("hex").slice(0, 16), symbol: row.symbol, side: row.side, status: row.status, entryPrice: row.entryPrice, markPrice: row.status === "open" ? row.price : null, exitPrice: row.status === "open" ? null : row.price, stopPrice: Number((row.entryPrice * (row.side === "BUY" ? .97 : 1.03)).toFixed(6)), targetPrice: Number((row.entryPrice * (row.side === "BUY" ? 1.06 : .94)).toFixed(6)), amountUsdt: row.amountUsdt, quantity: Number((row.amountUsdt / row.entryPrice).toFixed(8)), ...outcome, openedAt: row.openedAt, closedAt: row.closedAt, exchange: "Binance Spot · Demo" };
+    return { tradeId: createHash("sha256").update(`autopilot-demo:${userId}:${index}`).digest("hex").slice(0, 16), symbol: row.symbol, side: row.side, status: row.status, entryPrice: row.entryPrice, markPrice: row.status === "open" ? row.price : null, exitPrice: row.status === "open" ? null : row.price, stopPrice: Number((row.entryPrice * (row.side === "BUY" ? .97 : 1.03)).toFixed(6)), targetPrice: Number((row.entryPrice * (row.side === "BUY" ? 1.06 : .94)).toFixed(6)), amountUsdt: row.amountUsdt, quantity: Number((row.amountUsdt / row.entryPrice).toFixed(8)), ...outcome, openedAt: row.openedAt, closedAt: row.closedAt, exchange: "Binance Futures · Demo" };
   });
 }
 
@@ -152,13 +152,15 @@ export function nextDemoOpportunity(userId: string, count: number) {
   return { ...fixture, ...calculateTradeMetrics(fixture.side, fixture.entry, fixture.stop, fixture.target, 250), ...approvalValidity(fixture, createdAt), opportunityId: createHash("sha256").update(`companion-demo:${userId}:${count}:${Date.now()}`).digest("hex").slice(0, 16), status: "pending" as const, markPrice: fixture.entry, exitPrice: null, positionPnlUsdt: null, pnlPct: null, realizedPnlUsdt: null, createdAt, decidedAt: null, openedAt: null, closedAt: null };
 }
 
-export function nextDemoAutopilotTrade(userId: string, count: number, maxPositionUsd: number, allowedSymbols: string[]) {
+export function nextDemoAutopilotTrade(userId: string, count: number, maxPositionUsd: number, leverage: number, allowedSymbols: string[]) {
   const symbol = allowedSymbols[count % allowedSymbols.length] ?? "BTCUSDT";
   const side = count % 2 === 0 ? "BUY" as const : "SELL" as const;
   const entryPrice = executionPrices[symbol] ?? 100;
   const move = count % 3 === 0 ? .006 : -.004;
   const markPrice = Number((entryPrice * (1 + move)).toFixed(6));
   const amountUsdt = Math.min(maxPositionUsd, 250);
+  const notionalUsdt = amountUsdt * leverage;
+  const outcome = pnl(side, entryPrice, markPrice, notionalUsdt);
   return {
     tradeId: createHash("sha256").update(`autopilot-run:${userId}:${count}:${Date.now()}`).digest("hex").slice(0, 16),
     symbol,
@@ -170,10 +172,12 @@ export function nextDemoAutopilotTrade(userId: string, count: number, maxPositio
     stopPrice: Number((entryPrice * (side === "BUY" ? .97 : 1.03)).toFixed(6)),
     targetPrice: Number((entryPrice * (side === "BUY" ? 1.06 : .94)).toFixed(6)),
     amountUsdt,
-    quantity: Number((amountUsdt / entryPrice).toFixed(8)),
-    ...pnl(side, entryPrice, markPrice, amountUsdt),
+    leverage,
+    quantity: Number((notionalUsdt / entryPrice).toFixed(8)),
+    pnlUsdt: outcome.pnlUsdt,
+    pnlPct: Number((outcome.pnlUsdt / amountUsdt * 100).toFixed(2)),
     openedAt: new Date(),
     closedAt: null,
-    exchange: "Binance Spot · Demo",
+    exchange: "Binance Futures · Demo",
   };
 }

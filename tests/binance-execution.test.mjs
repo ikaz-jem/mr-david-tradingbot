@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertSpotTradingBinancePermissions, BinanceApiError, floorBinanceQuantity, placeBinanceSpotMarketOrder, signBinanceQuery } from "../src/lib/binance-spot.ts";
+import { assertFuturesTradingBinancePermissions, assertSpotTradingBinancePermissions, BinanceApiError, floorBinanceQuantity, placeBinanceSpotMarketOrder, signBinanceQuery } from "../src/lib/binance-spot.ts";
 
 const safeTrading = { enableReading: true, enableWithdrawals: false, enableInternalTransfer: false, permitsUniversalTransfer: false, enableSpotAndMarginTrading: true, enableMargin: false, enableFutures: false, ipRestrict: true };
-test("Spot execution accepts only trading keys without money-moving or leveraged permissions", () => {
+test("Binance permits combined Spot and Futures trading while rejecting money-moving permissions", () => {
   assert.doesNotThrow(() => assertSpotTradingBinancePermissions(safeTrading));
-  for (const dangerous of ["enableWithdrawals", "enableInternalTransfer", "permitsUniversalTransfer", "enableMargin", "enableFutures"]) assert.throws(() => assertSpotTradingBinancePermissions({ ...safeTrading, [dangerous]: true }), BinanceApiError);
+  for (const dangerous of ["enableWithdrawals", "enableInternalTransfer", "permitsUniversalTransfer", "enableMargin"]) assert.throws(() => assertSpotTradingBinancePermissions({ ...safeTrading, [dangerous]: true }), BinanceApiError);
+  assert.doesNotThrow(() => assertSpotTradingBinancePermissions({ ...safeTrading, enableFutures: true }));
+  assert.doesNotThrow(() => assertFuturesTradingBinancePermissions({ ...safeTrading, enableFutures: true }));
+  assert.throws(() => assertFuturesTradingBinancePermissions(safeTrading), BinanceApiError);
   assert.throws(() => assertSpotTradingBinancePermissions({ ...safeTrading, enableSpotAndMarginTrading: false }), BinanceApiError);
 });
 test("floors sell quantities to Binance step size", () => {

@@ -3,6 +3,7 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 const schema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
   enabled: { type: Boolean, default: true, index: true },
+  market: { type: String, enum: ["spot", "futures"], default: "spot" },
   symbols: { type: [String], default: ["BTCUSDT", "ETHUSDT", "SOLUSDT"] },
   intervals: { type: [String], default: ["15m", "1h", "4h"] },
   strategySlugs: { type: [String], default: ["ai-router"] },

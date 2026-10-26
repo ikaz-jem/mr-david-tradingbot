@@ -17,6 +17,7 @@ const scanRunSchema = new Schema({
   providerResponseId: { type: String, default: "" },
   aiDecision: { type: String, enum: ["publish", "no_setup"], default: null },
   aiConfidence: { type: Number, min: 0, max: 100, default: null },
+  ruleReadinessScore: { type: Number, min: 0, max: 100, default: null },
   inputTokens: { type: Number, min: 0, default: 0 },
   outputTokens: { type: Number, min: 0, default: 0 },
   marketCacheHit: { type: Boolean, default: false },

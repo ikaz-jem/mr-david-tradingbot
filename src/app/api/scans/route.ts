@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const selection = resolveStrategySelection(candles, strategySlug, strategies);
     const { analysis } = selection;
     const strategy = { requestedSlug: selection.requested.slug, selectedSlug: selection.selected.slug, selectedName: selection.selected.name, version: selection.selected.version };
-    const { evaluation, cacheHit: aiCacheHit } = await getSharedResearchDecision(symbol, interval, analysis, service, strategy);
+    const { evaluation, cacheHit: aiCacheHit, source: decisionSource } = await getSharedResearchDecision(symbol, interval, analysis, service, strategy);
     const setupSide = analysis.setupSide;
     const publish = evaluation.decision === "publish" && setupSide !== null;
     const mongoSession = await mongoose.startSession();
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
         }
         const completed = await ScanRun.updateOne(
           { _id: runId, userId, status: "running" },
-          { $set: { status: "completed", outcome: publish ? "setup" : "no_setup", setupSide: publish ? setupSide : null, requestedStrategySlug: strategy.requestedSlug, strategySlug: strategy.selectedSlug, strategyVersion: strategy.version, summary: evaluation.summary, modelVersion: service.openaiModel, providerResponseId: evaluation.providerResponseId, aiDecision: evaluation.decision, aiConfidence: evaluation.confidence, inputTokens: aiCacheHit ? 0 : evaluation.inputTokens, outputTokens: aiCacheHit ? 0 : evaluation.outputTokens, marketCacheHit, aiCacheHit, signalId: signalId ?? null, dataCutoff: analysis.dataCutoff, charged: true } },
+          { $set: { status: "completed", outcome: publish ? "setup" : "no_setup", setupSide: publish ? setupSide : null, requestedStrategySlug: strategy.requestedSlug, strategySlug: strategy.selectedSlug, strategyVersion: strategy.version, summary: evaluation.summary, modelVersion: decisionSource === "ai" ? service.openaiModel : "rule-engine", providerResponseId: evaluation.providerResponseId, aiDecision: evaluation.decision, aiConfidence: decisionSource === "ai" ? evaluation.confidence : null, ruleReadinessScore: analysis.readinessScore, inputTokens: aiCacheHit ? 0 : evaluation.inputTokens, outputTokens: aiCacheHit ? 0 : evaluation.outputTokens, marketCacheHit, aiCacheHit, signalId: signalId ?? null, dataCutoff: analysis.dataCutoff, charged: true } },
           { session: mongoSession },
         );
         if (completed.modifiedCount !== 1) throw new Error("Scan state changed before completion");
@@ -92,16 +92,16 @@ export async function POST(request: Request) {
       await mongoSession.endSession();
     }
     const direction = setupSide === "sell" ? "short" : "long";
-    await notifyUser({ userId: session.user.id, kind: "research", title: publish ? `${symbol} ${direction} setup found` : `${symbol} AI scan completed`, body: evaluation.summary, href: "/dashboard/signals", sourceKey: `scan:${runId}` }).catch(error => console.error("Scan notification failed", error));
+    await notifyUser({ userId: session.user.id, kind: "research", title: publish ? `${symbol} ${direction} setup found` : `${symbol} research scan completed`, body: evaluation.summary, href: "/dashboard/signals", sourceKey: `scan:${runId}` }).catch(error => console.error("Scan notification failed", error));
     try {
       const appUrl = process.env.APP_URL;
-      if (user.settings?.emailResearch !== false && appUrl && await hasEmailProvider()) {
-        const title = publish ? `${symbol} ${direction} setup found` : `${symbol} AI scan completed`;
+      if (publish && user.settings?.emailResearch !== false && appUrl && await hasEmailProvider()) {
+        const title = `${symbol} ${direction} setup found`;
         const template = accountEventEmail(user.name, title, evaluation.summary, new URL("/dashboard/signals", appUrl).toString());
         await sendEmail({ to: user.email, category: "research", eventKey: `research:${runId}`, ...template });
       }
     } catch (error) { console.error("Scan email failed", error); }
-    return NextResponse.json({ outcome: publish ? "setup" : "no_setup", side: publish ? setupSide : null, strategy: strategy.selectedName, routed: selection.routed, summary: evaluation.summary, confidence: evaluation.confidence, sharedResult: aiCacheHit, signalId: signalId?.toString() ?? null, balance: balanceAfterCharge, cost: creditCost });
+    return NextResponse.json({ outcome: publish ? "setup" : "no_setup", side: publish ? setupSide : null, strategy: strategy.selectedName, routed: selection.routed, summary: evaluation.summary, confidence: decisionSource === "ai" ? evaluation.confidence : null, readinessScore: analysis.readinessScore, dataCutoff: analysis.dataCutoff.toISOString(), decisionSource, sharedResult: aiCacheHit, signalId: signalId?.toString() ?? null, balance: balanceAfterCharge, cost: creditCost });
   } catch (error) {
     console.error("Scan failed", error);
     if (runId && !charged) await ScanRun.updateOne({ _id: runId, userId, status: "running" }, { $set: { status: "failed", charged: false, summary: "The scan failed; no credit was charged." } }).catch(statusError => console.error("Scan status requires reconciliation", statusError));

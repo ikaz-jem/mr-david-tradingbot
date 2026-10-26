@@ -24,13 +24,16 @@ test("publishes only when breakout, trend, volume, and volatility pass", () => {
   assert.ok(result.stop < result.entry);
   assert.ok(result.target > result.entry);
   assert.equal(result.facts.upsideBreakout, true);
+  assert.equal(result.readinessScore, 100);
 });
 
 test("does not manufacture a setup from a quiet candle", () => {
   const result = analyzeCandles(candles());
   assert.equal(result.hasSetup, false);
   assert.equal(result.setupSide, null);
-  assert.match(result.summary, /No qualifying directional setup/);
+  assert.match(result.summary, /No qualifying trend breakout setup/);
+  assert.match(result.summary, /no 20-candle breakout or breakdown/);
+  assert.ok(result.readinessScore < 100);
 });
 
 test("publishes a short candidate when bearish trend, breakdown, volume, and volatility pass", () => {

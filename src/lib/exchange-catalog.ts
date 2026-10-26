@@ -24,7 +24,7 @@ export type ExchangeProviderDefinition = {
 export const exchangeProviders: ExchangeProviderDefinition[] = [
   {
     id: "binance", name: "Binance", shortName: "Binance", mark: "BN", color: "#f3ba2f",
-    description: "Spot balances, monitoring, and optional user-confirmed Spot execution through a dedicated HMAC key.",
+    description: "Enable Reading, Spot trading, and USD-M Futures trading on a dedicated API key. Disable withdrawals, transfers, and Margin. Binance may require an IP allowlist for trading permissions.",
     accountLabel: "Spot", managementUrl: "https://www.binance.com/en/my/settings/api-management",
     credentialFields: [
       { key: "apiKey", label: "API key", placeholder: "Paste the Binance API key" },
@@ -33,7 +33,7 @@ export const exchangeProviders: ExchangeProviderDefinition[] = [
   },
   {
     id: "bybit", name: "Bybit", shortName: "Bybit", mark: "BY", color: "#f7a600",
-    description: "Unified balances with optional Spot Trade access; wallet transfers and leveraged products stay disabled.",
+    description: "Enable read and write access for Spot Trade and Contract Trade orders/positions. Disable wallet transfers, withdrawals, options, and Earn.",
     accountLabel: "Unified", managementUrl: "https://www.bybit.com/app/user/api-management",
     credentialFields: [
       { key: "apiKey", label: "API key", placeholder: "Paste the Bybit API key" },
@@ -42,7 +42,7 @@ export const exchangeProviders: ExchangeProviderDefinition[] = [
   },
   {
     id: "okx", name: "OKX", shortName: "OKX", mark: "OK", color: "#ffffff",
-    description: "Trading-account balances with optional Read + Trade access for confirmed cash Spot orders.",
+    description: "Enable Read and Trade for the trading account. Disable Withdraw. Spot and perpetual orders use the verified trading key.",
     accountLabel: "Trading", managementUrl: "https://www.okx.com/account/my-api",
     credentialFields: [
       { key: "apiKey", label: "API key", placeholder: "Paste the OKX API key" },
@@ -52,7 +52,7 @@ export const exchangeProviders: ExchangeProviderDefinition[] = [
   },
   {
     id: "kraken", name: "Kraken", shortName: "Kraken", mark: "KR", color: "#8b5cf6",
-    description: "Spot balances with optional order permissions while funding and withdrawal capabilities stay disabled.",
+    description: "Kraken Spot and Derivatives require separate keys. Grant Spot balance and order access on one key, and Derivatives trading access on the second. Disable funding and withdrawals.",
     accountLabel: "Funding", managementUrl: "https://www.kraken.com/u/security/api",
     credentialFields: [
       { key: "apiKey", label: "API key", placeholder: "Paste the Kraken API key" },
@@ -61,7 +61,7 @@ export const exchangeProviders: ExchangeProviderDefinition[] = [
   },
   {
     id: "kucoin", name: "KuCoin", shortName: "KuCoin", mark: "KU", color: "#24ae8f",
-    description: "Account balances with optional General + Spot permissions; transfer and withdrawal access stays disabled.",
+    description: "Enable General, Spot, and Futures permissions. Disable Margin, Earn, Transfer, Unified, and Withdrawal permissions.",
     accountLabel: "Accounts", managementUrl: "https://www.kucoin.com/account/api",
     credentialFields: [
       { key: "apiKey", label: "API key", placeholder: "Paste the KuCoin API key" },

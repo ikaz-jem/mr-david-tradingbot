@@ -9,7 +9,7 @@ const schema = new Schema({
   orderId: { type: Schema.Types.ObjectId, ref: "Order", default: null },
   runId: { type: String, required: true },
   provider: { type: String, enum: ["binance", "bybit", "okx", "kraken", "kucoin"], required: true },
-  market: { type: String, enum: ["futures"], default: "futures" },
+  market: { type: String, enum: ["spot", "futures"], default: "futures" },
   symbol: { type: String, required: true },
   interval: { type: String, required: true },
   side: { type: String, enum: ["BUY", "SELL"], required: true },
