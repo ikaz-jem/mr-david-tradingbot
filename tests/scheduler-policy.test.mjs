@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { schedulerAuthorized, jobHealth } from "../src/lib/scheduler-policy.ts";
+import { readFileSync } from "node:fs";
+import { schedulerAuthorized, jobHealth, scheduledJobs } from "../src/lib/scheduler-policy.ts";
+
+test("production cron configuration covers every monitored worker", () => {
+  const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  assert.deepEqual(
+    config.crons.map(job => job.path).sort(),
+    scheduledJobs.map(job => `/api/internal/${job.key}`).sort(),
+  );
+  for (const job of config.crons) assert.match(job.schedule, /\S+ \S+ \S+ \S+ \S+/);
+});
 
 test("internal workers deny missing, weak, incorrect and cookie-only authorization", () => {
   const secret = "scheduler-test-secret-32-characters";
