@@ -6,7 +6,7 @@ import { mobileWebCorsHeaders, mobileWebCorsOrigin } from "@/lib/mobile-web-cors
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname.replace(/\/$/, "") || "/";
   const mobileCorsOrigin = path.startsWith("/api/mobile/")
-    ? mobileWebCorsOrigin(request.headers.get("origin"), process.env.NODE_ENV)
+    ? mobileWebCorsOrigin(request.headers.get("origin"), process.env.NODE_ENV, process.env.MOBILE_WEB_ALLOWED_ORIGINS)
     : null;
   if (request.method === "OPTIONS" && mobileCorsOrigin) {
     return new NextResponse(null, { status: 204, headers: mobileWebCorsHeaders(mobileCorsOrigin) });

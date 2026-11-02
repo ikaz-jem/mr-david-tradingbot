@@ -11,6 +11,14 @@ Expo SDK 58 app for customer accounts on Android and iOS. The web app in the rep
 
 The mobile API lives at `/api/mobile` in the root Next.js project. Deploy the backend changes before pointing a native build at the production domain. The app stores only its revocable session token in SecureStore; exchange credentials are submitted over HTTPS and remain server-side.
 
+## Production API access
+
+The deployed API origin is `https://enriveasignal.com`. If the website opens but mobile sign-in reports a connection or firewall error, inspect **Vercel Firewall → Logs** for `/api/mobile/auth/login` and `/api/mobile/auth/session`. A Vercel response shaped like `{"error":{"code":"challenge"}}` is issued before the Next.js route runs; a native app cannot complete a browser challenge. Remove the challenge for the narrow `/api/mobile/*` path with a path-scoped firewall bypass rule after confirming which firewall rule is responsible. Keep the application authentication, rate limits, and audit logging enabled. If the challenge is from a system-level mitigation that custom rules cannot bypass, use Vercel support/firewall settings to resolve it rather than changing login credentials.
+
+After the firewall change, an unauthenticated `GET /api/mobile/auth/session` should return an application `401`, and `POST /api/mobile/auth/login` with an empty JSON body should return an application `400`, with neither response containing `error.code: "challenge"`. Then test a real customer login. Admin and staff accounts use the web dashboard.
+
+Expo Web running on `localhost:8081` is a separate browser origin. The backend allows Expo's localhost preview ports `8081`–`8089` and `19006` on `/api/mobile/*` by default, including when Expo Web calls the deployed API. Redeploy the Next.js app after changing this policy. For other browser origins, use the exact `MOBILE_WEB_ALLOWED_ORIGINS` allowlist. A Vercel firewall challenge, if one appears, must be resolved separately; CORS cannot remove it. Native Android and iOS apps do not use browser CORS.
+
 ## Native builds and push
 
 1. Sign in to the Enrivea Expo account and run `npx eas-cli@latest init` here. This writes the EAS project ID required by `getExpoPushTokenAsync`.
