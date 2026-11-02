@@ -4,10 +4,11 @@ import { GET as autopilot } from "@/app/api/internal/autopilot/route";
 import { GET as tracking } from "@/app/api/internal/trade-tracking/route";
 import { GET as billing } from "@/app/api/internal/billing-reconciliation/route";
 import { GET as assets } from "@/app/api/internal/help-assets/route";
+import { GET as pushDelivery } from "@/app/api/internal/push-delivery/route";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const handlers = { "approval-scan": approval, autopilot, "trade-tracking": tracking, "billing-reconciliation": billing, "help-assets": assets };
+const handlers = { "approval-scan": approval, autopilot, "trade-tracking": tracking, "billing-reconciliation": billing, "help-assets": assets, "push-delivery": pushDelivery };
 
 export async function POST(request: Request, context: { params: Promise<{ job: string }> }) {
   if (!schedulerAuthorized(request)) return Response.json({ error: "Scheduler authorization required." }, { status: 401 });

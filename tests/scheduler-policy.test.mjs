@@ -7,7 +7,7 @@ test("production cron configuration covers every monitored worker", () => {
   const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
   assert.deepEqual(
     config.crons.map(job => job.path).sort(),
-    scheduledJobs.map(job => `/api/internal/${job.key}`).sort(),
+    [...scheduledJobs.map(job => `/api/internal/${job.key}`), "/api/internal/push-delivery"].sort(),
   );
   for (const job of config.crons) assert.match(job.schedule, /\S+ \S+ \S+ \S+ \S+/);
 });

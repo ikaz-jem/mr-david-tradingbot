@@ -8,8 +8,14 @@ const notificationSchema = new Schema({
   href: { type: String, default: null },
   sourceKey: { type: String, required: true, unique: true },
   readAt: { type: Date, default: null },
+  pushStatus: { type: String, enum: ["pending", "sent", "skipped", "failed"], default: "pending", index: true },
+  pushAttempts: { type: Number, default: 0 },
+  pushLeaseUntil: { type: Date, default: null },
+  pushLastError: { type: String, default: null, maxlength: 300 },
+  pushCompletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 notificationSchema.index({ userId: 1, createdAt: -1 });
+notificationSchema.index({ pushStatus: 1, pushLeaseUntil: 1, createdAt: 1 });
 export type NotificationRecord = InferSchemaType<typeof notificationSchema> & { _id: mongoose.Types.ObjectId };
 export const Notification = (mongoose.models.Notification as Model<NotificationRecord> | undefined) ?? mongoose.model<NotificationRecord>("Notification", notificationSchema);

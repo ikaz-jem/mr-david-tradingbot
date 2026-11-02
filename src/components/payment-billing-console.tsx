@@ -18,12 +18,12 @@ type Data = {
 
 const money = (minor: number, currency = "USD") => new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100);
 
-export function PaymentBillingConsole() {
-  const [data, setData] = useState<Data | null>(null);
-  const [method, setMethod] = useState("paystack");
+export function PaymentBillingConsole({ initialData }: { initialData?: Data }) {
+  const [data, setData] = useState<Data | null>(initialData ?? null);
+  const [method, setMethod] = useState(initialData?.gateways.find(row => row.enabled && row.ready)?.provider || "paystack");
   const [coins, setCoins] = useState<Coin[]>([]);
   const [payCurrency, setPayCurrency] = useState("usdtbsc");
-  const [paymentEmail, setPaymentEmail] = useState("");
+  const [paymentEmail, setPaymentEmail] = useState(initialData?.accountEmail ?? "");
   const [coinError, setCoinError] = useState("");
   const [coinLoading, setCoinLoading] = useState(true);
   const [coinPickerOpen, setCoinPickerOpen] = useState(false);
@@ -33,11 +33,12 @@ export function PaymentBillingConsole() {
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (initialData) return;
     fetch("/api/billing/methods", { cache: "no-store" })
       .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error); return result as Data; })
       .then(result => { setData(result); setPaymentEmail(result.accountEmail); setMethod(result.gateways.find(row => row.enabled && row.ready)?.provider || "paystack"); })
       .catch(error => setError(error instanceof Error ? error.message : "Billing is unavailable."));
-  }, []);
+  }, [initialData]);
 
   useEffect(() => {
     if (method !== "nowpayments") return;

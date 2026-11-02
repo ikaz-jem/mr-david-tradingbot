@@ -11,3 +11,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Mandatory authorization review
 
 Every new feature and code change must explicitly determine whether authentication, authorization, tenant isolation, ownership checks, permission-gated UI, audit logging, or sensitive-operation rate limiting apply. Follow `.cursor/rules/authorization-review.mdc`. Protected operations are deny-by-default and must be enforced server-side through centralized authorization helpers; frontend visibility is never a security boundary.
+
+## Web and mobile parity
+
+`mobile-app/` is the Expo user application. For every change to a user-facing web feature or its API, review the corresponding mobile screen and update it when behavior or data contracts change. Keep admin and staff controls in the web app. Record intentional differences in `mobile-app/PARITY.md`.
