@@ -32,6 +32,8 @@ export async function proxy(request: NextRequest) {
   if (mobileCorsOrigin) {
     for (const [key, value] of Object.entries(mobileWebCorsHeaders(mobileCorsOrigin))) response.headers.set(key, value);
   }
+
+
   return response;
 }
 export const config = { matcher: ["/admin/:path*", "/dashboard/:path*", "/api/:path*"] };

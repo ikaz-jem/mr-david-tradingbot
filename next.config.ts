@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: process.env.APP_URL ? [new URL(process.env.APP_URL).hostname] : [],
+  allowedDevOrigins: ["*"],
+  // allowedDevOrigins: process.env.APP_URL ? [new URL(process.env.APP_URL).hostname ] : [],
   poweredByHeader: false,
   async headers() {
     const headers = [
